@@ -38,9 +38,22 @@ from d2c_clean_external_metrics_report import (
     normalize_all_events,
 )
 
-APP_TITLE = "SureBright D2C Metrics & Attribution"
+APP_TITLE = "Surebright Anywhere Traffic & Campaign Insights"
 DEFAULT_START_DATE = date(2026, 5, 21)
 DEFAULT_TIMEZONE = "Asia/Kolkata"
+LOGO_FILENAME = "surebright_logo_homepage.webp"
+
+
+def get_logo_path() -> Optional[Path]:
+    possible_paths = [
+        Path(__file__).with_name(LOGO_FILENAME),
+        Path.cwd() / LOGO_FILENAME,
+        Path("/mnt/data") / LOGO_FILENAME,
+    ]
+    for path in possible_paths:
+        if path.exists():
+            return path
+    return None
 
 
 def safe_stem(filename: str) -> str:
@@ -296,18 +309,17 @@ def process_uploaded_file(
     }
 
 
-def show_kpis(daily: pd.DataFrame, parseable_count: int, clean_count: int) -> None:
+def show_kpis(daily: pd.DataFrame) -> None:
     gross_gwp = float(daily["Gross GWP $"].sum()) if not daily.empty and "Gross GWP $" in daily else 0.0
     payment_success = int(daily["Payment Success"].sum()) if not daily.empty and "Payment Success" in daily else 0
     payment_attempted = int(daily["Payment Attempted"].sum()) if not daily.empty and "Payment Attempted" in daily else 0
     enquiry_attempted = int(daily["Enquiry Attempted"].sum()) if not daily.empty and "Enquiry Attempted" in daily else 0
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Parseable events", f"{parseable_count:,}")
-    c2.metric("Clean external events", f"{clean_count:,}")
-    c3.metric("Enquiry Attempted", f"{enquiry_attempted:,}")
-    c4.metric("Payment Success", f"{payment_success:,}")
-    c5.metric("Gross GWP", f"${gross_gwp:,.2f}")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Enquiry Attempted", f"{enquiry_attempted:,}")
+    c2.metric("Payment Attempted", f"{payment_attempted:,}")
+    c3.metric("Payment Success", f"{payment_success:,}")
+    c4.metric("Gross GWP", f"${gross_gwp:,.2f}")
 
     if payment_attempted:
         st.caption(f"Payment success rate: {payment_success / payment_attempted:.1%} based on clean external payment-attempt users.")
@@ -315,11 +327,11 @@ def show_kpis(daily: pd.DataFrame, parseable_count: int, clean_count: int) -> No
 
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="📊", layout="wide")
+
+    logo_path = get_logo_path()
+    if logo_path is not None:
+        st.image(str(logo_path), width=360)
     st.title(APP_TITLE)
-    st.write(
-        "Upload the D2C raw export or connect a OneDrive file link to generate Clean External daily metrics, totals, attribution, product, retailer stats, and an event audit. "
-        "Supported formats: `.xlsx`, `.csv`, `.txt`, `.jsonl`."
-    )
 
     with st.sidebar:
         st.header("Inputs")
@@ -412,8 +424,7 @@ def main() -> None:
     audit = result["audit"]
     clean_audit = result["clean_audit"]
 
-    st.caption(f"Source: {source_filename} ({source_mode})")
-    show_kpis(daily, result["parseable_count"], result["clean_count"])
+    show_kpis(daily)
 
     attribution = result["attribution"]
     utm_breakdown = result["utm_breakdown"]
