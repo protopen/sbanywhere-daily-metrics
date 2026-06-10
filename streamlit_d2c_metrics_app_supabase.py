@@ -533,6 +533,89 @@ def build_sankey_links_from_audit(clean_audit: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+
+def build_daily_metrics_summary_table(daily: pd.DataFrame) -> pd.DataFrame:
+    """Daily compact table requested for the Daily Metrics tab."""
+    if daily.empty:
+        return pd.DataFrame(
+            columns=[
+                "Date",
+                "Enquiry Attempted",
+                "Sign Up_total",
+                "Add to cart",
+                "Invoice Upload_Success",
+                "Initiate Checkout",
+                "Payment Success",
+            ]
+        )
+
+    out = pd.DataFrame()
+    out["Date"] = daily["Date"] if "Date" in daily.columns else ""
+    out["Enquiry Attempted"] = daily.get("Enquiry Attempted", 0)
+    out["Sign Up_total"] = daily.get("Sign Up_total", 0)
+    out["Add to cart"] = daily.get("Add to Cart_Success", 0)
+    out["Invoice Upload_Success"] = daily.get("Invoice Upload_Success", 0)
+    out["Initiate Checkout"] = daily.get("Payment Attempted", 0)
+    out["Payment Success"] = daily.get("Payment Success", 0)
+    return out
+
+
+def build_detailed_total_table(daily: pd.DataFrame, clean_audit: pd.DataFrame) -> pd.DataFrame:
+    """Detailed total table requested for the Daily Metrics tab."""
+    def total(col: str) -> float:
+        if daily.empty or col not in daily.columns:
+            return 0
+        return float(daily[col].sum())
+
+    if clean_audit is not None and not clean_audit.empty and "identity_key" in clean_audit.columns:
+        user_count = int(clean_audit["identity_key"].dropna().nunique())
+    else:
+        user_count = 0
+
+    invoice_upload_attempted = total("Invoice Upload_Success") + total("Invoice Upload_Failure")
+    payment_attempted = total("Payment Attempted")
+
+    rows = [
+        ("User Count", user_count),
+        ("Enquiry Attempted", total("Enquiry Attempted")),
+        ("Sign Up_total", total("Sign Up_total")),
+        ("Add to cart", total("Add to Cart_Success")),
+        ("Invoice Upload_Attempted", invoice_upload_attempted),
+        ("Invoice Upload_Success", total("Invoice Upload_Success")),
+        ("Invoice Upload_Failure", total("Invoice Upload_Failure")),
+        ("revised_offer_shown", total("Revised Offer")),
+        ("Initiate Checkout", payment_attempted),
+        ("Payment Attempted", payment_attempted),
+        ("Payment Success", total("Payment Success")),
+        ("Gross GWP $", round(total("Gross GWP $"), 2)),
+    ]
+
+    out = pd.DataFrame(rows, columns=["Metric", "Value"])
+    # Keep integer-looking values clean while preserving currency decimals.
+    out["Value"] = out.apply(
+        lambda r: f"${float(r['Value']):,.2f}" if r["Metric"] == "Gross GWP $" else int(r["Value"]),
+        axis=1,
+    )
+    return out
+
+
+def build_product_count_table(daily: pd.DataFrame) -> pd.DataFrame:
+    """Product count table requested for the Daily Metrics tab."""
+    def total(col: str) -> int:
+        if daily.empty or col not in daily.columns:
+            return 0
+        return int(daily[col].sum())
+
+    return pd.DataFrame(
+        [
+            ("Invoice Success_Product Count", total("Invoice Success_Product Count")),
+            ("Add to Cart_Success Count", total("Add to Cart_Success Count")),
+            ("Payment Success_ Count", total("Payment Success_Count")),
+        ],
+        columns=["Metric", "Value"],
+    )
+
+
 def render_daily_sankey(clean_audit: pd.DataFrame) -> None:
     sankey_links = build_sankey_links_from_audit(clean_audit)
     if sankey_links.empty:
@@ -563,7 +646,7 @@ def render_daily_sankey(clean_audit: pd.DataFrame) -> None:
     fig.update_layout(
         title_text="Clean External funnel journey",
         height=620,
-        font_size=12,
+        font=dict(size=13, color="#FFFFFF"),
         margin=dict(l=10, r=10, t=50, b=10),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -695,10 +778,37 @@ def main() -> None:
         if daily.empty:
             st.warning("No clean external events matched the selected date range.")
         else:
-            st.dataframe(daily, use_container_width=True, hide_index=True)
-            st.markdown("#### Funnel Sankey")
-            st.caption("Shows unique clean external users progressing between funnel stages in the selected date range.")
-            render_daily_sankey(clean_audit)
+            daily_tables_tab, daily_sankey_tab = st.tabs(["Tables", "Sankey"])
+
+            with daily_tables_tab:
+                st.markdown("#### Daily")
+                st.dataframe(
+                    build_daily_metrics_summary_table(daily),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.markdown("#### Detailed / Total")
+                st.dataframe(
+                    build_detailed_total_table(daily, clean_audit),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.markdown("#### Product Count")
+                st.dataframe(
+                    build_product_count_table(daily),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                with st.expander("View full Daily Metrics table"):
+                    st.dataframe(daily, use_container_width=True, hide_index=True)
+
+            with daily_sankey_tab:
+                st.markdown("#### Funnel Sankey")
+                st.caption("Shows unique clean external users progressing between funnel stages in the selected date range. Node label text uses a bright color for readability.")
+                render_daily_sankey(clean_audit)
 
     with tab_totals:
         st.subheader("Totals")
