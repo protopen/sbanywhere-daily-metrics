@@ -34,6 +34,8 @@ from d2c_clean_external_metrics_report import (
     build_daily_metrics,
     build_totals,
     build_attribution_campaign_stats,
+    build_attribution_adset_stats,
+    build_attribution_ad_stats,
     build_utm_event_breakdown,
     build_product_stats,
     build_retailer_stats,
@@ -202,8 +204,12 @@ def fetch_onedrive_file(url: str, access_token: Optional[str] = None) -> Tuple[b
 def build_excel_bytes(
     daily: pd.DataFrame,
     totals: pd.DataFrame,
-    attribution: pd.DataFrame,
-    utm_breakdown: pd.DataFrame,
+    attribution_campaign: pd.DataFrame,
+    attribution_adset: pd.DataFrame,
+    attribution_ad: pd.DataFrame,
+    breakdown_campaign: pd.DataFrame,
+    breakdown_adset: pd.DataFrame,
+    breakdown_ad: pd.DataFrame,
     product: pd.DataFrame,
     retailer: pd.DataFrame,
     audit_df: pd.DataFrame,
@@ -213,8 +219,12 @@ def build_excel_bytes(
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         daily.to_excel(writer, index=False, sheet_name="Daily Metrics")
         totals.to_excel(writer, index=False, sheet_name="Totals")
-        attribution.to_excel(writer, index=False, sheet_name="Attribution by Campaign")
-        utm_breakdown.to_excel(writer, index=False, sheet_name="UTM Event Breakdown")
+        attribution_campaign.to_excel(writer, index=False, sheet_name="Campaign Attribution")
+        attribution_adset.to_excel(writer, index=False, sheet_name="Ad Set Attribution")
+        attribution_ad.to_excel(writer, index=False, sheet_name="Ad Attribution")
+        breakdown_campaign.to_excel(writer, index=False, sheet_name="Campaign Event Breakdown")
+        breakdown_adset.to_excel(writer, index=False, sheet_name="Ad Set Event Breakdown")
+        breakdown_ad.to_excel(writer, index=False, sheet_name="Ad Event Breakdown")
         product.to_excel(writer, index=False, sheet_name="Product Stats")
         retailer.to_excel(writer, index=False, sheet_name="Retailer Stats")
         audit_df.to_excel(writer, index=False, sheet_name="Event Audit")
@@ -375,8 +385,12 @@ def process_uploaded_file(
 
         daily = build_daily_metrics(clean_events, start_date=None, end_date=None)
         totals = build_totals(daily)
-        attribution = build_attribution_campaign_stats(clean_events)
-        utm_breakdown = build_utm_event_breakdown(clean_events)
+        attribution_campaign = build_attribution_campaign_stats(clean_events)
+        attribution_adset = build_attribution_adset_stats(clean_events)
+        attribution_ad = build_attribution_ad_stats(clean_events)
+        breakdown_campaign = build_utm_event_breakdown(clean_events, level="campaign")
+        breakdown_adset = build_utm_event_breakdown(clean_events, level="ad_set")
+        breakdown_ad = build_utm_event_breakdown(clean_events, level="ad")
         product = build_product_stats(clean_events)
         retailer = build_retailer_stats(clean_events)
         audit_df = pd.DataFrame([event.__dict__ for event in all_events])
@@ -397,13 +411,20 @@ def process_uploaded_file(
             columns=["Field", "Value"],
         )
 
-        excel_bytes = build_excel_bytes(daily, totals, attribution, utm_breakdown, product, retailer, audit_df, metadata)
+        excel_bytes = build_excel_bytes(
+            daily, totals, attribution_campaign, attribution_adset, attribution_ad,
+            breakdown_campaign, breakdown_adset, breakdown_ad, product, retailer, audit_df, metadata
+        )
 
     return {
         "daily": daily,
         "totals": totals,
-        "attribution": attribution,
-        "utm_breakdown": utm_breakdown,
+        "attribution_campaign": attribution_campaign,
+        "attribution_adset": attribution_adset,
+        "attribution_ad": attribution_ad,
+        "breakdown_campaign": breakdown_campaign,
+        "breakdown_adset": breakdown_adset,
+        "breakdown_ad": breakdown_ad,
         "product": product,
         "retailer": retailer,
         "audit": audit_df,
@@ -520,8 +541,12 @@ def main() -> None:
 
     show_kpis(daily)
 
-    attribution = result["attribution"]
-    utm_breakdown = result["utm_breakdown"]
+    attribution_campaign = result["attribution_campaign"]
+    attribution_adset = result["attribution_adset"]
+    attribution_ad = result["attribution_ad"]
+    breakdown_campaign = result["breakdown_campaign"]
+    breakdown_adset = result["breakdown_adset"]
+    breakdown_ad = result["breakdown_ad"]
     product = result["product"]
     retailer = result["retailer"]
 
@@ -547,22 +572,34 @@ def main() -> None:
 
     with tab_attribution:
         st.subheader("Attribution")
-        st.caption("UTM/ad-click traffic only. Groups by `source.attribution.utm_source` and `source.attribution.utm_campaign`; counts sessions by `session.session_id` and fb clicks by unique `fbclid`.")
+        st.caption("UTM/ad-click traffic only. Campaign = `utm_campaign`, Ad set = ad-set fields or `utm_term`, Ad = ad fields or `utm_content`.")
 
-        st.markdown("#### By campaign")
-        if attribution.empty:
-            st.warning("No UTM/ad-click attribution rows available for this date range.")
-        else:
-            st.dataframe(attribution, use_container_width=True, hide_index=True)
+        campaign_tab, adset_tab, ad_tab = st.tabs(["Campaign level", "Ad set level", "Ads level"])
 
-        st.markdown("#### Event breakdown for UTM traffic")
-        if utm_breakdown.empty:
-            st.warning("No UTM event breakdown rows available for this date range.")
-        else:
-            st.dataframe(utm_breakdown, use_container_width=True, hide_index=True)
-            event_cols = [c for c in ["Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"] if c in utm_breakdown.columns]
-            if event_cols:
-                st.bar_chart(utm_breakdown.set_index("Campaign")[event_cols])
+        def show_attribution_level(summary_df: pd.DataFrame, breakdown_df: pd.DataFrame, label_col: str) -> None:
+            st.markdown("#### Summary")
+            if summary_df.empty:
+                st.warning("No UTM/ad-click attribution rows available for this date range.")
+            else:
+                st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+            st.markdown("#### Event breakdown")
+            if breakdown_df.empty:
+                st.warning("No UTM event breakdown rows available for this date range.")
+            else:
+                st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+                event_cols = [c for c in ["Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"] if c in breakdown_df.columns]
+                if event_cols and label_col in breakdown_df.columns:
+                    st.bar_chart(breakdown_df.set_index(label_col)[event_cols])
+
+        with campaign_tab:
+            show_attribution_level(attribution_campaign, breakdown_campaign, "Campaign Label")
+
+        with adset_tab:
+            show_attribution_level(attribution_adset, breakdown_adset, "Ad set Label")
+
+        with ad_tab:
+            show_attribution_level(attribution_ad, breakdown_ad, "Ad Label")
 
     with tab_product:
         st.subheader("Product Stats")
@@ -621,15 +658,39 @@ def main() -> None:
             mime="text/csv",
         )
         st.download_button(
-            "Download attribution by campaign CSV",
-            data=dataframe_to_csv_bytes(attribution),
-            file_name=f"{base}_attribution_by_campaign.csv",
+            "Download campaign attribution CSV",
+            data=dataframe_to_csv_bytes(attribution_campaign),
+            file_name=f"{base}_campaign_attribution.csv",
             mime="text/csv",
         )
         st.download_button(
-            "Download UTM event breakdown CSV",
-            data=dataframe_to_csv_bytes(utm_breakdown),
-            file_name=f"{base}_utm_event_breakdown.csv",
+            "Download ad set attribution CSV",
+            data=dataframe_to_csv_bytes(attribution_adset),
+            file_name=f"{base}_adset_attribution.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download ads attribution CSV",
+            data=dataframe_to_csv_bytes(attribution_ad),
+            file_name=f"{base}_ads_attribution.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download campaign event breakdown CSV",
+            data=dataframe_to_csv_bytes(breakdown_campaign),
+            file_name=f"{base}_campaign_event_breakdown.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download ad set event breakdown CSV",
+            data=dataframe_to_csv_bytes(breakdown_adset),
+            file_name=f"{base}_adset_event_breakdown.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download ads event breakdown CSV",
+            data=dataframe_to_csv_bytes(breakdown_ad),
+            file_name=f"{base}_ads_event_breakdown.csv",
             mime="text/csv",
         )
         st.download_button(
@@ -657,7 +718,7 @@ def main() -> None:
             mime="text/csv",
         )
 
-    st.caption("Metric logic matches the Clean External reporting script: unique-user counts for user metrics, product counts for product-level metrics, GWP from successful payment checkout totals, and campaign attribution, UTM event breakdown, product, and retailer rollups from revised payload fields.")
+    st.caption("Metric logic matches the Clean External reporting script: unique-user counts for user metrics, product counts for product-level metrics, GWP from successful payment checkout totals, and campaign, ad set, ads attribution, UTM event breakdown, product, and retailer rollups from revised payload fields.")
 
 
 if __name__ == "__main__":

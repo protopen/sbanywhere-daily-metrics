@@ -35,7 +35,7 @@ from dataclasses import dataclass, asdict
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import pandas as pd
 
@@ -785,6 +785,23 @@ def _safe_json(e: NormEvent) -> dict:
         return {}
 
 
+def _query_params_from_url(url: str) -> dict[str, str]:
+    if not url:
+        return {}
+    try:
+        qs = parse_qs(urlparse(url).query, keep_blank_values=True)
+        return {k: (v[0] if v else "") for k, v in qs.items()}
+    except Exception:
+        return {}
+
+
+def _first_non_empty(*values: Any) -> str:
+    for value in values:
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
 def attribution_values(obj: dict) -> dict[str, str]:
     attr = nested_get(obj, "source.attribution")
     if not isinstance(attr, dict):
@@ -793,24 +810,60 @@ def attribution_values(obj: dict) -> dict[str, str]:
     if not isinstance(utm, dict):
         utm = {}
 
-    referrer = str(attr.get("referrer") or nested_get(obj, "source.referrer") or "").strip()
-    landing_page = str(attr.get("landing_page") or page_url(obj) or "").strip()
-    gclid = str(attr.get("gclid") or "").strip()
-    fbclid = str(attr.get("fbclid") or "").strip()
-    gbraid = str(attr.get("gbraid") or "").strip()
-    wbraid = str(attr.get("wbraid") or "").strip()
+    source_referrer = str(nested_get(obj, "source.referrer") or "").strip()
+    page = page_url(obj)
+    landing_page_raw = str(attr.get("landing_page") or page or "").strip()
+    landing_qs = _query_params_from_url(landing_page_raw)
+    page_qs = _query_params_from_url(page)
+    referrer_qs = _query_params_from_url(source_referrer)
 
-    utm_source = str(attr.get("utm_source") or utm.get("source") or "").strip()
-    utm_medium = str(attr.get("utm_medium") or utm.get("medium") or "").strip()
-    utm_campaign = str(attr.get("utm_campaign") or utm.get("campaign") or "").strip()
-    utm_term = str(attr.get("utm_term") or utm.get("term") or "").strip()
-    utm_content = str(attr.get("utm_content") or utm.get("content") or "").strip()
+    def p(name: str) -> str:
+        return _first_non_empty(
+            attr.get(name),
+            utm.get(name.replace("utm_", "")),
+            landing_qs.get(name),
+            page_qs.get(name),
+            referrer_qs.get(name),
+        )
+
+    referrer = _first_non_empty(attr.get("referrer"), source_referrer)
+    landing_page = landing_page_raw
+    gclid = _first_non_empty(attr.get("gclid"), landing_qs.get("gclid"), page_qs.get("gclid"), referrer_qs.get("gclid"))
+    fbclid = _first_non_empty(attr.get("fbclid"), landing_qs.get("fbclid"), page_qs.get("fbclid"), referrer_qs.get("fbclid"))
+    gbraid = _first_non_empty(attr.get("gbraid"), landing_qs.get("gbraid"), page_qs.get("gbraid"), referrer_qs.get("gbraid"))
+    wbraid = _first_non_empty(attr.get("wbraid"), landing_qs.get("wbraid"), page_qs.get("wbraid"), referrer_qs.get("wbraid"))
+
+    utm_source = p("utm_source")
+    utm_medium = p("utm_medium")
+    utm_campaign = p("utm_campaign")
+    utm_term = p("utm_term")
+    utm_content = p("utm_content")
+
+    # Extra fields for Meta/paid social hierarchy. Fallbacks map common UTM conventions:
+    # campaign = utm_campaign, ad set = utm_term, ad = utm_content.
+    adset = _first_non_empty(
+        attr.get("utm_adset"), attr.get("adset"), attr.get("ad_set"),
+        attr.get("adset_name"), attr.get("ad_set_name"), attr.get("adgroup"), attr.get("ad_group"),
+        utm.get("adset"), utm.get("ad_set"), utm.get("adset_name"), utm.get("ad_group"),
+        landing_qs.get("utm_adset"), landing_qs.get("adset"), landing_qs.get("ad_set"), landing_qs.get("adset_name"), landing_qs.get("ad_set_name"),
+        page_qs.get("utm_adset"), page_qs.get("adset"), page_qs.get("ad_set"), page_qs.get("adset_name"), page_qs.get("ad_set_name"),
+        referrer_qs.get("utm_adset"), referrer_qs.get("adset"), referrer_qs.get("ad_set"), referrer_qs.get("adset_name"), referrer_qs.get("ad_set_name"),
+        utm_term,
+    )
+    ad = _first_non_empty(
+        attr.get("utm_ad"), attr.get("ad"), attr.get("ad_name"), attr.get("creative"), attr.get("creative_name"),
+        utm.get("ad"), utm.get("ad_name"), utm.get("creative"), utm.get("creative_name"),
+        landing_qs.get("utm_ad"), landing_qs.get("ad"), landing_qs.get("ad_name"), landing_qs.get("creative"), landing_qs.get("creative_name"),
+        page_qs.get("utm_ad"), page_qs.get("ad"), page_qs.get("ad_name"), page_qs.get("creative"), page_qs.get("creative_name"),
+        referrer_qs.get("utm_ad"), referrer_qs.get("ad"), referrer_qs.get("ad_name"), referrer_qs.get("creative"), referrer_qs.get("creative_name"),
+        utm_content,
+    )
 
     if not utm_source:
         if gclid or gbraid or wbraid:
             utm_source = "google_ads"
         elif fbclid:
-            utm_source = "facebook"
+            utm_source = "fb"
         elif referrer:
             try:
                 host = urlparse(referrer).netloc.lower().replace("www.", "")
@@ -834,12 +887,17 @@ def attribution_values(obj: dict) -> dict[str, str]:
         "utm_campaign": utm_campaign or "(none)",
         "utm_term": utm_term or "",
         "utm_content": utm_content or "",
+        "ad_set": adset or "(not set)",
+        "ad": ad or "(not set)",
+        "gclid": gclid,
+        "gbraid": gbraid,
+        "wbraid": wbraid,
+        "fbclid": fbclid,
         "referrer": referrer,
         "landing_page": landing_page,
         "first_seen_at": str(attr.get("first_seen_at") or ""),
         "source_component": str(nested_get(obj, "source.component", "raw.source", "data.source") or ""),
     }
-
 
 def retailer_values(obj: dict) -> dict[str, str]:
     retailer = nested_get(obj, "event_data.invoice.retailer", "invoice.retailer")
@@ -960,82 +1018,121 @@ def _metric_counts_for_group(events: list[NormEvent]) -> dict[str, Any]:
 
 def _ad_click_ids(obj: dict) -> dict[str, str]:
     """Return common paid-social/search click ids from revised attribution payloads and fallbacks."""
-    attr = nested_get(obj, "source.attribution")
-    if not isinstance(attr, dict):
-        attr = {}
+    a = attribution_values(obj)
     return {
-        "fbclid": str(attr.get("fbclid") or nested_get(obj, "fbclid", "raw.fbclid") or "").strip(),
-        "gclid": str(attr.get("gclid") or nested_get(obj, "gclid", "raw.gclid") or "").strip(),
-        "gbraid": str(attr.get("gbraid") or nested_get(obj, "gbraid", "raw.gbraid") or "").strip(),
-        "wbraid": str(attr.get("wbraid") or nested_get(obj, "wbraid", "raw.wbraid") or "").strip(),
+        "fbclid": str(a.get("fbclid") or nested_get(obj, "fbclid", "raw.fbclid") or "").strip(),
+        "gclid": str(a.get("gclid") or nested_get(obj, "gclid", "raw.gclid") or "").strip(),
+        "gbraid": str(a.get("gbraid") or nested_get(obj, "gbraid", "raw.gbraid") or "").strip(),
+        "wbraid": str(a.get("wbraid") or nested_get(obj, "wbraid", "raw.wbraid") or "").strip(),
     }
 
 
 def _is_utm_traffic(a: dict[str, str], ids: dict[str, str]) -> bool:
-    """UTM/ad-click traffic for the attribution tab.
-
-    Do not include plain referral/direct rows with campaign = (none); those belong in general attribution,
-    but the requested tables are campaign/ad-click focused.
-    """
+    """Return True for explicit campaign/ad-click traffic, excluding plain direct/referral rows."""
     campaign = str(a.get("utm_campaign") or "").strip()
     explicit_campaign = campaign not in ("", "(none)")
     has_click_id = any(v for v in ids.values())
     return explicit_campaign or has_click_id
 
 
-def build_attribution_campaign_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
-    """Build the user-requested attribution table: Source, Campaign, Events, Sessions, Leads captured, Unique fbclicks."""
-    groups: dict[tuple[str, str], list[tuple[NormEvent, dict[str, str], dict[str, str]]]] = defaultdict(list)
+def _attribution_group_key(a: dict[str, str], level: str) -> tuple[str, ...]:
+    source = str(a.get("utm_source") or "unknown").strip() or "unknown"
+    campaign = str(a.get("utm_campaign") or "(none)").strip() or "(none)"
+    ad_set = str(a.get("ad_set") or "(not set)").strip() or "(not set)"
+    ad = str(a.get("ad") or "(not set)").strip() or "(not set)"
+    if level == "campaign":
+        return (source, campaign)
+    if level == "ad_set":
+        return (source, campaign, ad_set)
+    if level == "ad":
+        return (source, campaign, ad_set, ad)
+    raise ValueError(f"Unknown attribution level: {level}")
+
+
+def _attribution_columns(level: str) -> list[str]:
+    if level == "campaign":
+        return ["Source", "Campaign", "Events", "Sessions", "Leads captured", "Unique fbclicks"]
+    if level == "ad_set":
+        return ["Source", "Campaign", "Ad set", "Events", "Sessions", "Leads captured", "Unique fbclicks"]
+    if level == "ad":
+        return ["Source", "Campaign", "Ad set", "Ad", "Events", "Sessions", "Leads captured", "Unique fbclicks"]
+    raise ValueError(f"Unknown attribution level: {level}")
+
+
+def build_attribution_level_stats(clean_events: list[NormEvent], level: str = "campaign") -> pd.DataFrame:
+    """Build attribution summary at campaign, ad set, or ad level."""
+    groups: dict[tuple[str, ...], list[tuple[NormEvent, dict[str, str], dict[str, str]]]] = defaultdict(list)
     for e in clean_events:
         obj = _safe_json(e)
         a = attribution_values(obj)
         ids = _ad_click_ids(obj)
         if not _is_utm_traffic(a, ids):
             continue
-        source = str(a.get("utm_source") or "unknown").strip() or "unknown"
-        campaign = str(a.get("utm_campaign") or "(none)").strip() or "(none)"
-        groups[(source, campaign)].append((e, a, ids))
+        groups[_attribution_group_key(a, level)].append((e, a, ids))
 
     rows = []
-    for (source, campaign), items in groups.items():
+    for key, items in groups.items():
         events = [x[0] for x in items]
-        rows.append({
-            "Source": source,
-            "Campaign": campaign,
+        row = dict(zip(_attribution_columns(level)[:-4], key))
+        row.update({
             "Events": len(events),
             "Sessions": len({e.session_id for e in events if e.session_id}),
             "Leads captured": len({e.identity_key for e in events if e.event_name in USER_METRIC_EVENTS["Sign Up_total"]}),
             "Unique fbclicks": len({ids.get("fbclid", "") for _, _, ids in items if ids.get("fbclid", "")}),
         })
-    df = pd.DataFrame(rows, columns=["Source", "Campaign", "Events", "Sessions", "Leads captured", "Unique fbclicks"])
+        rows.append(row)
+
+    columns = _attribution_columns(level)
+    df = pd.DataFrame(rows, columns=columns)
     if not df.empty:
         df = df.sort_values(["Events", "Sessions", "Leads captured"], ascending=[False, False, False]).reset_index(drop=True)
     return df
 
 
-def build_utm_event_breakdown(clean_events: list[NormEvent]) -> pd.DataFrame:
-    """Build the user-requested event breakdown table for UTM/ad-click traffic."""
-    groups: dict[str, list[NormEvent]] = defaultdict(list)
+def build_attribution_campaign_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
+    return build_attribution_level_stats(clean_events, level="campaign")
+
+
+def build_attribution_adset_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
+    return build_attribution_level_stats(clean_events, level="ad_set")
+
+
+def build_attribution_ad_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
+    return build_attribution_level_stats(clean_events, level="ad")
+
+
+def build_utm_event_breakdown(clean_events: list[NormEvent], level: str = "campaign") -> pd.DataFrame:
+    """Build event breakdown for UTM/ad-click traffic at the requested level."""
+    groups: dict[tuple[str, ...], list[NormEvent]] = defaultdict(list)
     for e in clean_events:
         obj = _safe_json(e)
         a = attribution_values(obj)
         ids = _ad_click_ids(obj)
         if not _is_utm_traffic(a, ids):
             continue
-        source = str(a.get("utm_source") or "unknown").strip() or "unknown"
-        campaign = str(a.get("utm_campaign") or "(none)").strip() or "(none)"
-        groups[f"{source} / {campaign}"].append(e)
+        groups[_attribution_group_key(a, level)].append(e)
 
     rows = []
-    for campaign_label, evs in groups.items():
-        rows.append({
-            "Campaign": campaign_label,
+    key_cols = _attribution_columns(level)[:-4]
+    for key, evs in groups.items():
+        row = dict(zip(key_cols, key))
+        if level == "campaign":
+            row["Campaign Label"] = f"{row['Source']} / {row['Campaign']}"
+        elif level == "ad_set":
+            row["Ad set Label"] = f"{row['Source']} / {row['Campaign']} / {row['Ad set']}"
+        else:
+            row["Ad Label"] = f"{row['Source']} / {row['Campaign']} / {row['Ad set']} / {row['Ad']}"
+        row.update({
             "Homepage form submit": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["Enquiry Attempted"]),
             "Quote generated": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["First Quote_Success"]),
             "Plan selected": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["Offer_Selected"]),
             "Quote lead captured": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["Sign Up_total"]),
         })
-    df = pd.DataFrame(rows, columns=["Campaign", "Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"])
+        rows.append(row)
+
+    label_col = "Campaign Label" if level == "campaign" else "Ad set Label" if level == "ad_set" else "Ad Label"
+    columns = key_cols + [label_col, "Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"]
+    df = pd.DataFrame(rows, columns=columns)
     if not df.empty:
         metric_cols = ["Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"]
         df["_events"] = df[metric_cols].sum(axis=1)
@@ -1044,7 +1141,7 @@ def build_utm_event_breakdown(clean_events: list[NormEvent]) -> pd.DataFrame:
 
 
 def build_attribution_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
-    """Backward-compatible wrapper. The app now shows this as Attribution by Campaign."""
+    """Backward-compatible wrapper."""
     return build_attribution_campaign_stats(clean_events)
 
 
