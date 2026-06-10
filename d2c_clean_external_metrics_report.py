@@ -1102,7 +1102,14 @@ def build_attribution_ad_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
 
 
 def build_utm_event_breakdown(clean_events: list[NormEvent], level: str = "campaign") -> pd.DataFrame:
-    """Build event breakdown for UTM/ad-click traffic at the requested level."""
+    """
+    Build attribution breakdown for UTM/ad-click traffic at the requested level,
+    using the same business metric labels as Daily Metrics.
+
+    Scope note:
+      - Daily Metrics = all Clean External events
+      - This table = only Clean External events with UTM/ad-click attribution
+    """
     groups: dict[tuple[str, ...], list[NormEvent]] = defaultdict(list)
     for e in clean_events:
         obj = _safe_json(e)
@@ -1114,29 +1121,66 @@ def build_utm_event_breakdown(clean_events: list[NormEvent], level: str = "campa
 
     rows = []
     key_cols = _attribution_columns(level)[:-4]
+    metric_cols = [
+        "Enquiry Attempted",
+        "Sign Up_total",
+        "First Quote_Success",
+        "Offer_Selected",
+        "Invoice Upload_Success",
+        "Invoice Upload_Failure",
+        "Add details Later",
+        "Revised Offer",
+        "Additional Product",
+        "Add to Cart_Success",
+        "Payment Attempted",
+        "Payment Success",
+        "Payment Failed",
+        "Email Verified_Success",
+        "Email Verified_Failed",
+        "Gross GWP $",
+    ]
+
     for key, evs in groups.items():
         row = dict(zip(key_cols, key))
         if level == "campaign":
             row["Campaign Label"] = f"{row['Source']} / {row['Campaign']}"
+            label_col = "Campaign Label"
         elif level == "ad_set":
             row["Ad set Label"] = f"{row['Source']} / {row['Campaign']} / {row['Ad set']}"
+            label_col = "Ad set Label"
         else:
             row["Ad Label"] = f"{row['Source']} / {row['Campaign']} / {row['Ad set']} / {row['Ad']}"
-        row.update({
-            "Homepage form submit": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["Enquiry Attempted"]),
-            "Quote generated": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["First Quote_Success"]),
-            "Plan selected": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["Offer_Selected"]),
-            "Quote lead captured": sum(1 for e in evs if e.event_name in USER_METRIC_EVENTS["Sign Up_total"]),
-        })
+            label_col = "Ad Label"
+
+        # User-level metrics use unique identities, matching the Daily Metrics convention.
+        row["Enquiry Attempted"] = len({e.identity_key for e in evs if e.event_name in ENQUIRY_EVENTS})
+        row["Sign Up_total"] = len({e.identity_key for e in evs if e.event_name in USER_METRIC_EVENTS["Sign Up_total"]})
+        row["First Quote_Success"] = len({e.identity_key for e in evs if e.event_name in QUOTE_SUCCESS_EVENTS})
+        row["Offer_Selected"] = len({e.identity_key for e in evs if e.event_name in OFFER_SELECTED_EVENTS})
+        row["Invoice Upload_Success"] = len({e.identity_key for e in evs if e.event_name in INVOICE_SUCCESS_EVENTS})
+        row["Invoice Upload_Failure"] = len({e.identity_key for e in evs if e.event_name in INVOICE_FAILURE_EVENTS})
+        row["Add details Later"] = 0
+        row["Revised Offer"] = len({e.identity_key for e in evs if e.event_name in REVISED_OFFER_EVENTS})
+        row["Additional Product"] = len({e.identity_key for e in evs if e.event_name in USER_METRIC_EVENTS["Additional Product"]})
+        row["Add to Cart_Success"] = len({e.identity_key for e in evs if e.event_name in ADD_TO_CART_EVENTS})
+        row["Payment Attempted"] = len({e.identity_key for e in evs if e.event_name in PAYMENT_ATTEMPTED_EVENTS})
+        row["Payment Success"] = len({e.identity_key for e in evs if e.event_name in PAYMENT_SUCCESS_EVENTS})
+        row["Payment Failed"] = len({e.identity_key for e in evs if e.event_name in PAYMENT_FAILED_EVENTS})
+        row["Email Verified_Success"] = 0
+        row["Email Verified_Failed"] = 0
+        row["Gross GWP $"] = round(sum(e.gwp for e in evs if e.event_name in PAYMENT_SUCCESS_EVENTS), 2)
         rows.append(row)
 
     label_col = "Campaign Label" if level == "campaign" else "Ad set Label" if level == "ad_set" else "Ad Label"
-    columns = key_cols + [label_col, "Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"]
+    columns = key_cols + [label_col] + metric_cols
     df = pd.DataFrame(rows, columns=columns)
     if not df.empty:
-        metric_cols = ["Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"]
-        df["_events"] = df[metric_cols].sum(axis=1)
-        df = df.sort_values(["_events", "Homepage form submit"], ascending=[False, False]).drop(columns=["_events"]).reset_index(drop=True)
+        df["_sort_events"] = df[[c for c in metric_cols if c != "Gross GWP $"]].sum(axis=1)
+        df = (
+            df.sort_values(["Gross GWP $", "_sort_events", "Enquiry Attempted"], ascending=[False, False, False])
+            .drop(columns=["_sort_events"])
+            .reset_index(drop=True)
+        )
     return df
 
 

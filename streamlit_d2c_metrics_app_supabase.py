@@ -222,9 +222,9 @@ def build_excel_bytes(
         attribution_campaign.to_excel(writer, index=False, sheet_name="Campaign Attribution")
         attribution_adset.to_excel(writer, index=False, sheet_name="Ad Set Attribution")
         attribution_ad.to_excel(writer, index=False, sheet_name="Ad Attribution")
-        breakdown_campaign.to_excel(writer, index=False, sheet_name="Campaign Event Breakdown")
-        breakdown_adset.to_excel(writer, index=False, sheet_name="Ad Set Event Breakdown")
-        breakdown_ad.to_excel(writer, index=False, sheet_name="Ad Event Breakdown")
+        breakdown_campaign.to_excel(writer, index=False, sheet_name="Campaign Metric Breakdown")
+        breakdown_adset.to_excel(writer, index=False, sheet_name="Ad Set Metric Breakdown")
+        breakdown_ad.to_excel(writer, index=False, sheet_name="Ad Metric Breakdown")
         product.to_excel(writer, index=False, sheet_name="Product Stats")
         retailer.to_excel(writer, index=False, sheet_name="Retailer Stats")
         audit_df.to_excel(writer, index=False, sheet_name="Event Audit")
@@ -583,12 +583,25 @@ def main() -> None:
             else:
                 st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-            st.markdown("#### Event breakdown")
+            st.markdown("#### Metric breakdown")
+            st.caption("Uses the same business metric labels as Daily Metrics, but only for UTM/ad-click attributed traffic.")
             if breakdown_df.empty:
-                st.warning("No UTM event breakdown rows available for this date range.")
+                st.warning("No UTM/ad-click metric breakdown rows available for this date range.")
             else:
                 st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
-                event_cols = [c for c in ["Homepage form submit", "Quote generated", "Plan selected", "Quote lead captured"] if c in breakdown_df.columns]
+                event_cols = [
+                    c for c in [
+                        "Enquiry Attempted",
+                        "Sign Up_total",
+                        "First Quote_Success",
+                        "Offer_Selected",
+                        "Add to Cart_Success",
+                        "Payment Attempted",
+                        "Payment Success",
+                        "Payment Failed",
+                    ]
+                    if c in breakdown_df.columns
+                ]
                 if event_cols and label_col in breakdown_df.columns:
                     st.bar_chart(breakdown_df.set_index(label_col)[event_cols])
 
