@@ -21,6 +21,7 @@ from typing import Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import pandas as pd
+import plotly.graph_objects as go
 import requests
 import streamlit as st
 from supabase import create_client
@@ -436,6 +437,141 @@ def process_uploaded_file(
     }
 
 
+
+# -----------------------------
+# Daily Metrics Sankey
+# -----------------------------
+
+SANKEY_STAGE_EVENTS = {
+    "Enquiry Attempted": {"homepage_form_submit", "enquiry_attempted"},
+    "Sign Up_total": {"lead_signup", "quote_lead_captured", "signup_completed", "sign_up_completed"},
+    "First Quote_Success": {"quote_generated", "first_quote_success", "offer_generation_success"},
+    "Offer_Selected": {"plan_selected", "offer_selected"},
+    "Invoice Upload_Success": {"invoice_uploaded", "invoice_upload_success"},
+    "Invoice Upload_Failure": {"invoice_upload_failed", "invoice_upload_failure"},
+    "Revised Offer": {"revised_offer_shown", "revised_offer"},
+    "Additional Product": {"additional_product_detected", "additional_product"},
+    "Add to Cart_Success": {"cart_confirmed", "add_to_cart"},
+    "Payment Attempted": {"pay_now_clicked", "initiate_checkout"},
+    "Payment Success": {"payment_completed", "payment_success", "payment_succeeded", "purchase"},
+    "Payment Failed": {"payment_failed"},
+}
+
+SANKEY_MAIN_PATH = [
+    "Enquiry Attempted",
+    "Sign Up_total",
+    "First Quote_Success",
+    "Offer_Selected",
+    "Invoice Upload_Success",
+    "Add to Cart_Success",
+    "Payment Attempted",
+    "Payment Success",
+]
+
+
+def _stage_for_event_name(event_name: str) -> Optional[str]:
+    event_name = str(event_name or "").strip().lower()
+    for stage, event_names in SANKEY_STAGE_EVENTS.items():
+        if event_name in event_names:
+            return stage
+    return None
+
+
+def build_sankey_links_from_audit(clean_audit: pd.DataFrame) -> pd.DataFrame:
+    """Build user-progression Sankey links from clean event-level audit rows."""
+    if clean_audit.empty or "event_name" not in clean_audit.columns:
+        return pd.DataFrame(columns=["source", "target", "value"])
+
+    df = clean_audit.copy()
+    df["stage"] = df["event_name"].map(_stage_for_event_name)
+    df = df[df["stage"].notna()]
+    if df.empty:
+        return pd.DataFrame(columns=["source", "target", "value"])
+
+    if "identity_key" not in df.columns:
+        df["identity_key"] = "unknown"
+    if "event_time" in df.columns:
+        df = df.sort_values(["identity_key", "event_time"])
+
+    link_counts: dict[tuple[str, str], int] = {}
+
+    for _, g in df.groupby("identity_key", dropna=False):
+        reached = set(g["stage"].dropna().astype(str).tolist())
+        ordered_reached = [stage for stage in SANKEY_MAIN_PATH if stage in reached]
+
+        # Connect each reached business stage to the next reached business stage for that user.
+        for source, target in zip(ordered_reached, ordered_reached[1:]):
+            link_counts[(source, target)] = link_counts.get((source, target), 0) + 1
+
+        # Add terminal failure branches without double-counting users who eventually succeeded.
+        if "Invoice Upload_Failure" in reached and "Invoice Upload_Success" not in reached:
+            previous = None
+            for stage in ["Offer_Selected", "First Quote_Success", "Sign Up_total", "Enquiry Attempted"]:
+                if stage in reached:
+                    previous = stage
+                    break
+            if previous:
+                link_counts[(previous, "Invoice Upload_Failure")] = link_counts.get((previous, "Invoice Upload_Failure"), 0) + 1
+
+        if "Payment Failed" in reached and "Payment Success" not in reached:
+            previous = None
+            for stage in ["Payment Attempted", "Add to Cart_Success", "Invoice Upload_Success", "Offer_Selected"]:
+                if stage in reached:
+                    previous = stage
+                    break
+            if previous:
+                link_counts[(previous, "Payment Failed")] = link_counts.get((previous, "Payment Failed"), 0) + 1
+
+    rows = [{"source": s, "target": t, "value": v} for (s, t), v in link_counts.items() if v > 0]
+    if not rows:
+        return pd.DataFrame(columns=["source", "target", "value"])
+
+    out = pd.DataFrame(rows)
+    stage_order = {stage: i for i, stage in enumerate(SANKEY_MAIN_PATH + ["Invoice Upload_Failure", "Payment Failed"])}
+    out["_sort"] = out["source"].map(stage_order).fillna(999)
+    out = out.sort_values(["_sort", "source", "target"]).drop(columns=["_sort"]).reset_index(drop=True)
+    return out
+
+
+def render_daily_sankey(clean_audit: pd.DataFrame) -> None:
+    sankey_links = build_sankey_links_from_audit(clean_audit)
+    if sankey_links.empty:
+        st.info("Not enough clean external event progression data to draw a Sankey chart for this date range.")
+        return
+
+    labels = list(dict.fromkeys(sankey_links["source"].tolist() + sankey_links["target"].tolist()))
+    label_to_idx = {label: idx for idx, label in enumerate(labels)}
+
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                arrangement="snap",
+                node=dict(
+                    pad=22,
+                    thickness=18,
+                    line=dict(width=0.5),
+                    label=labels,
+                ),
+                link=dict(
+                    source=[label_to_idx[x] for x in sankey_links["source"]],
+                    target=[label_to_idx[x] for x in sankey_links["target"]],
+                    value=sankey_links["value"].tolist(),
+                ),
+            )
+        ]
+    )
+    fig.update_layout(
+        title_text="Clean External funnel journey",
+        height=620,
+        font_size=12,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("View Sankey source data"):
+        st.dataframe(sankey_links, use_container_width=True, hide_index=True)
+
+
 def show_kpis(daily: pd.DataFrame) -> None:
     gross_gwp = float(daily["Gross GWP $"].sum()) if not daily.empty and "Gross GWP $" in daily else 0.0
     payment_success = int(daily["Payment Success"].sum()) if not daily.empty and "Payment Success" in daily else 0
@@ -560,11 +696,9 @@ def main() -> None:
             st.warning("No clean external events matched the selected date range.")
         else:
             st.dataframe(daily, use_container_width=True, hide_index=True)
-            chart_cols = ["Enquiry Attempted", "Sign Up_total", "Payment Attempted", "Payment Success"]
-            available_chart_cols = [col for col in chart_cols if col in daily.columns]
-            if available_chart_cols:
-                chart_df = daily.set_index("Date")[available_chart_cols]
-                st.line_chart(chart_df)
+            st.markdown("#### Funnel Sankey")
+            st.caption("Shows unique clean external users progressing between funnel stages in the selected date range.")
+            render_daily_sankey(clean_audit)
 
     with tab_totals:
         st.subheader("Totals")
