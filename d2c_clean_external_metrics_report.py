@@ -49,14 +49,14 @@ except Exception:  # pragma: no cover
 # -----------------------------
 
 PROD_DOMAIN_KEYWORDS = ("surebrightanywhere.com",)
-EXCLUDED_IDENTITY_TERMS = ("abhishek", "santosh")
+EXCLUDED_IDENTITY_TERMS = ("abhishek", "santosh", "ankita")
 EXCLUDED_EMAIL_DOMAINS = ("surebright.com", "surerbright.com", "example.com")
 EXCLUDED_URL_TERMS = ("localhost", "webflow.io", "amplifyapp.com", "_meta_test=1")
 
 # Metric event mapping supports both legacy names and the revised payload names.
 USER_METRIC_EVENTS = {
     "Enquiry Attempted": {"homepage_form_submit", "enquiry_attempted"},
-    "Sign Up_total": {"lead_signup", "quote_lead_captured", "signup_completed", "sign_up_completed"},
+    "Sign Up_total": {"lead_signup", "quote_lead_captured", "signup_completed", "sign_up_completed", "sign_up_total", "signup_total", "sign_up"},
     "First Quote_Success": {"quote_generated", "first_quote_success", "offer_generation_success"},
     "Offer_Selected": {"plan_selected", "offer_selected"},
     "Invoice Upload_Success": {"invoice_uploaded", "invoice_upload_success"},
