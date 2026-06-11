@@ -393,6 +393,7 @@ def process_uploaded_file(
         breakdown_adset = build_utm_event_breakdown(clean_events, level="ad_set")
         breakdown_ad = build_utm_event_breakdown(clean_events, level="ad")
         product = build_product_stats(clean_events)
+        product = product.drop(columns=["Product Events"], errors="ignore")
         retailer = build_retailer_stats(clean_events)
         audit_df = pd.DataFrame([event.__dict__ for event in all_events])
         clean_audit_df = pd.DataFrame([event.__dict__ for event in clean_events])

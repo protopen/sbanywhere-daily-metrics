@@ -69,6 +69,10 @@ USER_METRIC_EVENTS = {
     "Payment Failed": {"payment_failed"},
 }
 
+# Compatibility aliases used by Product Stats and older app builds.
+SIGNUP_EVENTS = USER_METRIC_EVENTS["Sign Up_total"]
+PAYMENT_ATTEMPT_EVENTS = USER_METRIC_EVENTS["Payment Attempted"]
+
 INVOICE_SUCCESS_EVENTS = USER_METRIC_EVENTS["Invoice Upload_Success"]
 INVOICE_FAILURE_EVENTS = USER_METRIC_EVENTS["Invoice Upload_Failure"]
 QUOTE_SUCCESS_EVENTS = USER_METRIC_EVENTS["First Quote_Success"]
@@ -1215,14 +1219,15 @@ def build_product_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
         unique_emails = sorted({str(x).strip() for x in g["email"].dropna().tolist() if str(x).strip()})
         row["Email"] = ", ".join(unique_emails)
         row["Enquiry Attempted"] = int(g.loc[g["event_name"].isin(ENQUIRY_EVENTS), "quantity"].sum())
-        row["Sign Up_total"] = int(g.loc[g["event_name"].isin(SIGNUP_EVENTS), "quantity"].sum())
+        row["Sign Up_total"] = int(g.loc[g["event_name"].isin({"sign_up_total"}), "quantity"].sum())
         row["Add to cart"] = int(g.loc[g["event_name"].isin(ADD_TO_CART_EVENTS), "quantity"].sum())
         row["Invoice Upload_Success"] = int(g.loc[g["event_name"].isin(INVOICE_SUCCESS_EVENTS) & (g["eligible"] == True), "quantity"].sum())
-        row["Initiate Checkout"] = int(g.loc[g["event_name"].isin(PAYMENT_ATTEMPT_EVENTS), "quantity"].sum())
+        row["Initiate Checkout"] = int(g.loc[g["event_name"].isin({"initiate_checkout"}), "quantity"].sum())
         row["Payment Success"] = int(g.loc[g["event_name"].isin(PAYMENT_SUCCESS_EVENTS), "quantity"].sum())
         out_rows.append(row)
     df = pd.DataFrame(out_rows)
     if not df.empty:
+        df = df.drop(columns=["Product Events"], errors="ignore")
         df = df.sort_values(["Payment Success", "Add to cart", "Enquiry Attempted"], ascending=[False, False, False])
         preferred_cols = [
             "Product Category",
