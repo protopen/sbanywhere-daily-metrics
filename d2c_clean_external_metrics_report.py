@@ -915,6 +915,16 @@ def retailer_values(obj: dict) -> dict[str, str]:
     }
 
 
+
+def product_email_for_event(e: NormEvent) -> str:
+    """Prefer actor.email for Product Stats, then fall back to normalized email extraction."""
+    obj = _safe_json(e)
+    actor_email = nested_get(obj, "actor.email")
+    if actor_email:
+        return str(actor_email).strip()
+    return primary_email(e)
+
+
 def product_rows_for_event(e: NormEvent) -> list[dict[str, Any]]:
     obj = _safe_json(e)
     rows: list[dict[str, Any]] = []
@@ -938,7 +948,7 @@ def product_rows_for_event(e: NormEvent) -> list[dict[str, Any]]:
                 "date": e.date,
                 "event_name": e.event_name,
                 "identity_key": e.identity_key,
-                "email": primary_email(e),
+                "email": product_email_for_event(e),
                 "product_category": str(category.get("name") or product.get("category") or item.get("item_category") or item.get("category") or "Unknown"),
                 "product_title": str(product.get("title") or item.get("item_name") or item.get("name") or product.get("description") or "Unknown"),
                 "product_brand": str(product.get("brand") or nested_get(obj, "manufacturer.name") or ""),
@@ -968,7 +978,7 @@ def product_rows_for_event(e: NormEvent) -> list[dict[str, Any]]:
             "date": e.date,
             "event_name": e.event_name,
             "identity_key": e.identity_key,
-            "email": primary_email(e),
+            "email": product_email_for_event(e),
             "product_category": str(category or "Unknown"),
             "product_title": str(category or "Unknown"),
             "product_brand": str(nested_get(obj, "manufacturer.name") or ""),

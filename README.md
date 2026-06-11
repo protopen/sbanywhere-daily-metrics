@@ -1,10 +1,14 @@
-# Product table email update
+# Product Stats actor.email update
 
-Adds an `Email` column as the second column in Product Stats.
+Updates Product Stats so the `Email` column prefers `actor.email`.
+
+Fallback:
+- If `actor.email` is blank, it falls back to the existing normalized email extraction.
 
 This version also preserves:
 - Sign Up_total mapping fix for `sign_up_total`
-- Clean External exclusion for abhishek, santosh, and ankita
+- Clean External exclusions for abhishek, santosh, and ankita
+- Email as the second Product Stats column
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py
