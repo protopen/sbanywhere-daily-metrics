@@ -1,16 +1,14 @@
-# Supabase Streamlit app: Daily Metrics Sankey update
+# Product table email update
 
-This version replaces the Daily Metrics line/bar chart with a Plotly Sankey funnel.
+Adds an `Email` column as the second column in Product Stats.
 
-Replace in GitHub:
-- `streamlit_d2c_metrics_app_supabase.py`
-- `d2c_clean_external_metrics_report.py`
-- `requirements.txt`
+This version also preserves:
+- Sign Up_total mapping fix for `sign_up_total`
+- Clean External exclusion for abhishek, santosh, and ankita
 
-Make sure `plotly` is included in requirements.
+Replace these files in GitHub:
+- streamlit_d2c_metrics_app_supabase.py
+- d2c_clean_external_metrics_report.py
+- requirements.txt
 
-Run:
-```bash
-pip install -r requirements.txt
-streamlit run streamlit_d2c_metrics_app_supabase.py
-```
+Streamlit secrets do not change.
