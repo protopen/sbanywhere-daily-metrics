@@ -1202,6 +1202,8 @@ def build_product_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
         evs_by_key = []
         # Metric counts here are product-level counts, not unique user counts.
         row = dict(zip(["Product Category", "Product Title", "Product Brand", "Manufacturer", "Condition"], key))
+        unique_emails = sorted({str(x).strip() for x in g["email"].dropna().tolist() if str(x).strip()})
+        row["Email"] = ", ".join(unique_emails)
         row["Product Events"] = int(len(g))
         row["Unique Users"] = int(g["identity_key"].nunique())
         row["Enquiry Product Count"] = int(g.loc[g["event_name"].isin(ENQUIRY_EVENTS), "quantity"].sum())
@@ -1216,6 +1218,25 @@ def build_product_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
     df = pd.DataFrame(out_rows)
     if not df.empty:
         df = df.sort_values(["Gross GWP $", "Add to Cart_Success Count", "Enquiry Product Count"], ascending=[False, False, False])
+        preferred_cols = [
+            "Product Category",
+            "Email",
+            "Product Title",
+            "Product Brand",
+            "Manufacturer",
+            "Condition",
+            "Product Events",
+            "Unique Users",
+            "Enquiry Product Count",
+            "Offer Generation_Success Count",
+            "Invoice Success_Product Count",
+            "Add to Cart_Success Count",
+            "Payment Success_Count",
+            "Gross GWP $",
+            "Avg Product Price",
+            "Avg Plan Price",
+        ]
+        df = df[[c for c in preferred_cols if c in df.columns] + [c for c in df.columns if c not in preferred_cols]]
     return df
 
 
