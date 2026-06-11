@@ -39,6 +39,7 @@ from d2c_clean_external_metrics_report import (
     build_attribution_ad_stats,
     build_utm_event_breakdown,
     build_product_stats,
+    build_sales_stats,
     build_retailer_stats,
     normalize_all_events,
 )
@@ -212,6 +213,7 @@ def build_excel_bytes(
     breakdown_adset: pd.DataFrame,
     breakdown_ad: pd.DataFrame,
     product: pd.DataFrame,
+    sales: pd.DataFrame,
     retailer: pd.DataFrame,
     audit_df: pd.DataFrame,
     metadata: pd.DataFrame,
@@ -227,6 +229,7 @@ def build_excel_bytes(
         breakdown_adset.to_excel(writer, index=False, sheet_name="Ad Set Metric Breakdown")
         breakdown_ad.to_excel(writer, index=False, sheet_name="Ad Metric Breakdown")
         product.to_excel(writer, index=False, sheet_name="Product Stats")
+        sales.to_excel(writer, index=False, sheet_name="Sales")
         retailer.to_excel(writer, index=False, sheet_name="Retailer Stats")
         audit_df.to_excel(writer, index=False, sheet_name="Event Audit")
         metadata.to_excel(writer, index=False, sheet_name="Run Metadata")
@@ -394,6 +397,7 @@ def process_uploaded_file(
         breakdown_ad = build_utm_event_breakdown(clean_events, level="ad")
         product = build_product_stats(clean_events)
         product = product.drop(columns=["Product Events"], errors="ignore")
+        sales = build_sales_stats(clean_events)
         retailer = build_retailer_stats(clean_events)
         audit_df = pd.DataFrame([event.__dict__ for event in all_events])
         clean_audit_df = pd.DataFrame([event.__dict__ for event in clean_events])
@@ -415,7 +419,7 @@ def process_uploaded_file(
 
         excel_bytes = build_excel_bytes(
             daily, totals, attribution_campaign, attribution_adset, attribution_ad,
-            breakdown_campaign, breakdown_adset, breakdown_ad, product, retailer, audit_df, metadata
+            breakdown_campaign, breakdown_adset, breakdown_ad, product, sales, retailer, audit_df, metadata
         )
 
     return {
@@ -428,6 +432,7 @@ def process_uploaded_file(
         "breakdown_adset": breakdown_adset,
         "breakdown_ad": breakdown_ad,
         "product": product,
+        "sales": sales,
         "retailer": retailer,
         "audit": audit_df,
         "clean_audit": clean_audit_df,
@@ -768,10 +773,11 @@ def main() -> None:
     breakdown_adset = result["breakdown_adset"]
     breakdown_ad = result["breakdown_ad"]
     product = result["product"]
+    sales = result["sales"]
     retailer = result["retailer"]
 
-    tab_daily, tab_totals, tab_attribution, tab_product, tab_retailer, tab_audit, tab_downloads = st.tabs(
-        ["Daily Metrics", "Totals", "Attribution", "Product", "Retailer", "Event Audit", "Downloads"]
+    tab_daily, tab_totals, tab_attribution, tab_product, tab_sales, tab_retailer, tab_audit, tab_downloads = st.tabs(
+        ["Daily Metrics", "Totals", "Attribution", "Product", "Sales", "Retailer", "Event Audit", "Downloads"]
     )
 
     with tab_daily:
@@ -869,6 +875,15 @@ def main() -> None:
             if "Product Category" in product.columns and "Enquiry Product Count" in product.columns:
                 st.bar_chart(product.set_index("Product Category")[["Enquiry Product Count"]])
 
+
+    with tab_sales:
+        st.subheader("Sales")
+        st.caption("Payment Success events only. This table excludes PII other than email ID.")
+        if sales.empty:
+            st.warning("No payment success rows available for this date range.")
+        else:
+            st.dataframe(sales, use_container_width=True, hide_index=True)
+
     with tab_retailer:
         st.subheader("Retailer Stats")
         st.caption("Uses revised `event_data.invoice.retailer` fields and legacy `retailer_name` / `retailer_detected` fallbacks.")
@@ -955,6 +970,12 @@ def main() -> None:
             "Download product stats CSV",
             data=dataframe_to_csv_bytes(product),
             file_name=f"{base}_product_stats.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download sales CSV",
+            data=dataframe_to_csv_bytes(sales),
+            file_name=f"{base}_sales.csv",
             mime="text/csv",
         )
         st.download_button(

@@ -1203,6 +1203,120 @@ def build_attribution_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
     return build_attribution_campaign_stats(clean_events)
 
 
+
+def build_sales_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
+    """Build a non-PII sales table from Payment Success events.
+
+    Includes email ID as the only customer identifier. Excludes names, phone
+    numbers, billing/shipping addresses, and raw JSON.
+    """
+    rows: list[dict[str, Any]] = []
+
+    for e in clean_events:
+        if e.event_name not in PAYMENT_SUCCESS_EVENTS:
+            continue
+
+        obj = _safe_json(e)
+        attr = attribution_values(obj)
+        items = get_line_items(obj)
+
+        if not items:
+            raw_items = nested_get(obj, "raw.items", "data.items")
+            if isinstance(raw_items, list):
+                items = [i for i in raw_items if isinstance(i, dict)]
+
+        # If a payment event has no line_items, still keep one order-level row.
+        if not items:
+            items = [{}]
+
+        checkout_subtotal = parse_money(
+            nested_get(
+                obj,
+                "event_data.checkout.subtotal_amount",
+                "event_data.checkout.total_amount",
+                "checkout.subtotal_amount",
+                "checkout.total_amount",
+                "raw.value",
+                "event_data.gwp",
+                "gwp",
+                "warrantyPrice",
+                "warranty_price",
+            )
+        )
+
+        for item in items:
+            product = item.get("product") if isinstance(item.get("product"), dict) else {}
+            purchase = item.get("purchase") if isinstance(item.get("purchase"), dict) else {}
+            protection = item.get("protection") if isinstance(item.get("protection"), dict) else {}
+            category = product.get("category") if isinstance(product.get("category"), dict) else {}
+
+            row = {
+                "Date": e.date,
+                "Email": product_email_for_event(e),
+                "Event": e.event_name,
+                "Order / Payment ID": str(
+                    nested_get(
+                        obj,
+                        "event_data.checkout.order_id",
+                        "event_data.checkout.payment_id",
+                        "checkout.order_id",
+                        "checkout.payment_id",
+                        "payment_id",
+                        "order_id",
+                        "event_data.order_id",
+                        "event_data.payment_id",
+                    )
+                    or e.event_id
+                    or ""
+                ),
+                "Product Category": str(category.get("name") or product.get("category") or item.get("item_category") or item.get("category") or "Unknown"),
+                "Product Title": str(product.get("title") or item.get("item_name") or item.get("name") or product.get("description") or "Unknown"),
+                "Product Brand": str(product.get("brand") or nested_get(obj, "manufacturer.name") or ""),
+                "Manufacturer": str(nested_get(obj, "manufacturer.name") or product.get("brand") or ""),
+                "Model Number": str(nested_get(obj, "manufacturer.model_number") or product.get("sku") or ""),
+                "Product Condition": str(product.get("condition") or ""),
+                "Quantity": item_quantity(item),
+                "Product Unit Price": parse_money(purchase.get("unit_price") or item.get("unit_price") or item.get("price")),
+                "Product Total Price": parse_money(purchase.get("total_price") or item.get("total_price")),
+                "Warranty / Plan Name": str(protection.get("plan_name") or protection.get("name") or item.get("item_variant") or ""),
+                "Warranty Price": parse_money(
+                    protection.get("plan_price")
+                    or protection.get("price")
+                    or item.get("plan_price")
+                    or item.get("warrantyPrice")
+                    or item.get("warranty_price")
+                    or item.get("price")
+                    or e.gwp
+                    or checkout_subtotal
+                ),
+                "Warranty Term Months": protection.get("term_months") or protection.get("term") or "",
+                "Warranty Provider": str(protection.get("provider") or protection.get("underwriter") or protection.get("administrator") or ""),
+                "Manufacturer Warranty": str(nested_get(obj, "manufacturer.warranty") or product.get("warranty") or ""),
+                "Eligible": bool(is_eligible_item(item)) if item else "",
+                "Gross GWP $": round(float(e.gwp or checkout_subtotal or 0.0), 2),
+                "UTM Source": attr["utm_source"],
+                "UTM Medium": attr["utm_medium"],
+                "UTM Campaign": attr["utm_campaign"],
+            }
+            rows.append(row)
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "Date", "Email", "Event", "Order / Payment ID", "Product Category", "Product Title",
+                "Product Brand", "Manufacturer", "Model Number", "Product Condition", "Quantity",
+                "Product Unit Price", "Product Total Price", "Warranty / Plan Name", "Warranty Price",
+                "Warranty Term Months", "Warranty Provider", "Manufacturer Warranty", "Eligible",
+                "Gross GWP $", "UTM Source", "UTM Medium", "UTM Campaign",
+            ]
+        )
+
+    df = pd.DataFrame(rows)
+    df = df.sort_values(["Date", "Email", "Product Category", "Product Title"], ascending=[False, True, True, True]).reset_index(drop=True)
+    return df
+
+
+
 def build_product_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
     rows = []
     for e in clean_events:
