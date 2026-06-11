@@ -1,10 +1,15 @@
-# Product Events removed
+# Product Stats Daily Metrics alignment
 
-Removes the `Product Events` column from Product Stats.
+Updates Product Stats to show the same funnel metric labels as the Daily Metrics table:
+- Enquiry Attempted
+- Sign Up_total
+- Add to cart
+- Invoice Upload_Success
+- Initiate Checkout
+- Payment Success
 
-This version preserves:
-- Product Stats metrics aligned to the Daily Metrics table
-- Email as the second Product Stats column, sourced from actor.email first
+This version also preserves:
+- Product Stats Email as the second column, sourced from actor.email first
 - Sign Up_total mapping fix for sign_up_total
 - Clean External exclusions for abhishek, santosh, and ankita
 

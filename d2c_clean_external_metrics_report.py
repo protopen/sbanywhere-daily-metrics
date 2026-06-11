@@ -1223,7 +1223,6 @@ def build_product_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
         out_rows.append(row)
     df = pd.DataFrame(out_rows)
     if not df.empty:
-        df = df.drop(columns=["Product Events"], errors="ignore")
         df = df.sort_values(["Payment Success", "Add to cart", "Enquiry Attempted"], ascending=[False, False, False])
         preferred_cols = [
             "Product Category",
