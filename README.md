@@ -1,14 +1,12 @@
-# Product Stats actor.email update
+# Product Events removed
 
-Updates Product Stats so the `Email` column prefers `actor.email`.
+Removes the `Product Events` column from Product Stats.
 
-Fallback:
-- If `actor.email` is blank, it falls back to the existing normalized email extraction.
-
-This version also preserves:
-- Sign Up_total mapping fix for `sign_up_total`
+This version preserves:
+- Product Stats metrics aligned to the Daily Metrics table
+- Email as the second Product Stats column, sourced from actor.email first
+- Sign Up_total mapping fix for sign_up_total
 - Clean External exclusions for abhishek, santosh, and ankita
-- Email as the second Product Stats column
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py
