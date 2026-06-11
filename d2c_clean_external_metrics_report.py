@@ -1215,7 +1215,7 @@ def build_product_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
         unique_emails = sorted({str(x).strip() for x in g["email"].dropna().tolist() if str(x).strip()})
         row["Email"] = ", ".join(unique_emails)
         row["Enquiry Attempted"] = int(g.loc[g["event_name"].isin(ENQUIRY_EVENTS), "quantity"].sum())
-        row["Sign Up_total"] = int(g.loc[g["event_name"].isin(SIGNUP_EVENTS), "quantity"].sum())
+        row["Sign Up_total"] = int(g.loc[g["event_name"].isin({"sign_up_total"}), "quantity"].sum())
         row["Add to cart"] = int(g.loc[g["event_name"].isin(ADD_TO_CART_EVENTS), "quantity"].sum())
         row["Invoice Upload_Success"] = int(g.loc[g["event_name"].isin(INVOICE_SUCCESS_EVENTS) & (g["eligible"] == True), "quantity"].sum())
         row["Initiate Checkout"] = int(g.loc[g["event_name"].isin(PAYMENT_ATTEMPT_EVENTS), "quantity"].sum())
