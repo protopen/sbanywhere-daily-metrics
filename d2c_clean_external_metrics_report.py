@@ -1722,24 +1722,33 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
             unique_user_ids.add(form_email_signup or email or first.identity_key or session_key)
 
         elif has_invoice_or_later:
-            row = dict(base_row)
             invoice_obj = _safe_json(invoice_event) if invoice_event else {}
 
             form_name = form_value(invoice_obj, "name", "full_name", "fullname", "first_name", "firstname", "last_name", "lastname")
             form_email = form_value(invoice_obj, "email", "email_address", "emailaddress")
-            if form_name:
-                row["Name"] = form_name
-            if form_email:
-                row["Email"] = form_email
 
             line_items_data = line_items_full_data_for_session(events)
-            row["Line Items Data"] = compact_json_for_table(line_items_data)
 
-            # Also expose first line item fields as columns for easier scanning, while
-            # keeping the full line_items object in Line Items Data.
-            if line_items_data:
-                first_item_flat = flatten_for_table(line_items_data[0])
-                row.update({f"Line Item: {k}": v for k, v in first_item_flat.items()})
+            row = {
+                "First Event Date": first.date,
+                "Last Event Date": last.date,
+                "Name": form_name,
+                "Email": form_email,
+                "Last Stage": latest_stage_for_events(events),
+                "Invoice Uploaded": "Yes" if has_invoice_success else "No",
+                "Invoice Upload Failed": "Yes" if has_invoice_failure else "No",
+                "Product Category": product_bits.get("Product Category", ""),
+                "Product Brand": product_bits.get("Product Brand", ""),
+                "Manufacturer": product_bits.get("Manufacturer", ""),
+                "Model Number": product_bits.get("Model Number", ""),
+                "Warranty / Plan Name": product_bits.get("Warranty / Plan Name", ""),
+                "Warranty Price": product_bits.get("Warranty Price", ""),
+                "Retailer": product_bits.get("Retailer", ""),
+                "Line Items Data": compact_json_for_table(line_items_data),
+                "UTM Source": attr["utm_source"],
+                "UTM Medium": attr["utm_medium"],
+                "UTM Campaign": attr["utm_campaign"],
+            }
 
             invoice_rows.append(row)
             unique_user_ids.add((form_email or email) or first.identity_key or session_key)
@@ -1780,8 +1789,26 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
         "Product Category",
         "Product Price",
     ]
-    invoice_extra_cols = ["Line Items Data"] + sorted({k for row in invoice_rows for k in row.keys() if k.startswith("Line Item: ")})
-    invoice_columns = base_columns + [c for c in invoice_extra_cols if c not in base_columns]
+    invoice_columns = [
+        "First Event Date",
+        "Last Event Date",
+        "Name",
+        "Email",
+        "Last Stage",
+        "Invoice Uploaded",
+        "Invoice Upload Failed",
+        "Product Category",
+        "Product Brand",
+        "Manufacturer",
+        "Model Number",
+        "Warranty / Plan Name",
+        "Warranty Price",
+        "Retailer",
+        "Line Items Data",
+        "UTM Source",
+        "UTM Medium",
+        "UTM Campaign",
+    ]
 
     signup_df = pd.DataFrame(signup_rows)
     invoice_df = pd.DataFrame(invoice_rows)
@@ -1794,7 +1821,7 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
         signup_df.reset_index(drop=True, inplace=True)
 
     if not invoice_df.empty:
-        invoice_df.sort_values(["Last Event Date", "Email", "Session ID"], ascending=[False, True, True], inplace=True)
+        invoice_df.sort_values(["Last Event Date", "Email"], ascending=[False, True], inplace=True)
         invoice_df.reset_index(drop=True, inplace=True)
 
     unique_dropoff_users = int(len({u for u in unique_user_ids if str(u).strip()}))

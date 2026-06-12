@@ -1,39 +1,49 @@
-# High Intent Sign Up table cleanup
+# High Intent Invoice table cleanup
 
-Built on top of the High Intent forms + line_items version.
+Built on top of the High Intent signup-slim version.
 
-Changes to `Dropped after Sign Up_total` table:
-- Removes unwanted fields:
-  - form_name
-  - form_id
-  - fields.method
-  - retailer
-  - gross gwp
-  - product brand
-  - manufacturer
-  - warranty / plan name
+Changes to `Dropped after invoice upload or later` table:
+- Removes base PII fields from older row structure:
+  - email
+  - name
+  - phone
+  - address
+  - lead id
+- Removes:
   - product title
-  - invoice uploaded
-  - invoice upload failed
-  - event count
-  - name / phone / address / lead ID / email / session id from base row
-- Final displayed columns are exactly:
-  1. First Event Date
-  2. Last Event Date
-  3. Name
-  4. Email
-  5. Last Stage
-  6. Product Category
-  7. Product Price
+  - gross gwp
+  - all flattened `Line Item: ...` fields
+- Keeps only full line_items object in:
+  - Line Items Data
+
+Invoice table column order is now:
+1. First Event Date
+2. Last Event Date
+3. Name
+4. Email
+5. Last Stage
+6. Invoice Uploaded
+7. Invoice Upload Failed
+8. Product Category
+9. Product Brand
+10. Manufacturer
+11. Model Number
+12. Warranty / Plan Name
+13. Warranty Price
+14. Retailer
+15. Line Items Data
+16. UTM Source
+17. UTM Medium
+18. UTM Campaign
 
 Notes:
 - Name is sourced from `fields.name` / form name equivalents.
 - Email is sourced from `fields.email` / form email equivalents.
-- Product Category and Product Price are sourced from form fields where available.
+- Sign Up dropoff table remains as previously slimmed:
+  First Event Date, Last Event Date, Name, Email, Last Stage, Product Category, Product Price.
 
 Preserved:
-- Invoice dropoff table keeps name/email from form object and line_items object data.
-- User Key remains removed from High Intent tables.
+- User Key removed from High Intent tables.
 - High Intent unique dropoff ticker.
 - soumyaramtri@gmail.com exclusion.
 - Sales tab.

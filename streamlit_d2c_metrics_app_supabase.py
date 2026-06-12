@@ -914,7 +914,7 @@ def main() -> None:
 
         with high_invoice_tab:
             st.markdown("#### Dropped after invoice upload or later")
-            st.caption("Sessions that uploaded an invoice or reached a later step but did not complete payment. Includes name/email from the event form object and full line_items data.")
+            st.caption("Sessions that uploaded an invoice or reached a later step but did not complete payment. Shows first event date, last event date, Name, Email, last stage, and remaining invoice/product fields. Keeps full line_items object only in Line Items Data.")
             if high_intent_invoice.empty:
                 st.warning("No invoice-or-later dropoffs found for this date range.")
             else:
