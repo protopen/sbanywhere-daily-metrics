@@ -40,6 +40,7 @@ from d2c_clean_external_metrics_report import (
     build_utm_event_breakdown,
     build_product_stats,
     build_sales_stats,
+    build_high_intent_dropoffs,
     build_retailer_stats,
     normalize_all_events,
 )
@@ -214,6 +215,8 @@ def build_excel_bytes(
     breakdown_ad: pd.DataFrame,
     product: pd.DataFrame,
     sales: pd.DataFrame,
+    high_intent_signup: pd.DataFrame,
+    high_intent_invoice: pd.DataFrame,
     retailer: pd.DataFrame,
     audit_df: pd.DataFrame,
     metadata: pd.DataFrame,
@@ -230,6 +233,8 @@ def build_excel_bytes(
         breakdown_ad.to_excel(writer, index=False, sheet_name="Ad Metric Breakdown")
         product.to_excel(writer, index=False, sheet_name="Product Stats")
         sales.to_excel(writer, index=False, sheet_name="Sales")
+        high_intent_signup.to_excel(writer, index=False, sheet_name="Signup Dropoffs")
+        high_intent_invoice.to_excel(writer, index=False, sheet_name="Invoice Dropoffs")
         retailer.to_excel(writer, index=False, sheet_name="Retailer Stats")
         audit_df.to_excel(writer, index=False, sheet_name="Event Audit")
         metadata.to_excel(writer, index=False, sheet_name="Run Metadata")
@@ -398,6 +403,7 @@ def process_uploaded_file(
         product = build_product_stats(clean_events)
         product = product.drop(columns=["Product Events"], errors="ignore")
         sales = build_sales_stats(clean_events)
+        high_intent_signup, high_intent_invoice, high_intent_unique_dropoffs = build_high_intent_dropoffs(clean_events)
         retailer = build_retailer_stats(clean_events)
         audit_df = pd.DataFrame([event.__dict__ for event in all_events])
         clean_audit_df = pd.DataFrame([event.__dict__ for event in clean_events])
@@ -419,7 +425,7 @@ def process_uploaded_file(
 
         excel_bytes = build_excel_bytes(
             daily, totals, attribution_campaign, attribution_adset, attribution_ad,
-            breakdown_campaign, breakdown_adset, breakdown_ad, product, sales, retailer, audit_df, metadata
+            breakdown_campaign, breakdown_adset, breakdown_ad, product, sales, high_intent_signup, high_intent_invoice, retailer, audit_df, metadata
         )
 
     return {
@@ -433,6 +439,9 @@ def process_uploaded_file(
         "breakdown_ad": breakdown_ad,
         "product": product,
         "sales": sales,
+        "high_intent_signup": high_intent_signup,
+        "high_intent_invoice": high_intent_invoice,
+        "high_intent_unique_dropoffs": high_intent_unique_dropoffs,
         "retailer": retailer,
         "audit": audit_df,
         "clean_audit": clean_audit_df,
@@ -774,10 +783,13 @@ def main() -> None:
     breakdown_ad = result["breakdown_ad"]
     product = result["product"]
     sales = result["sales"]
+    high_intent_signup = result["high_intent_signup"]
+    high_intent_invoice = result["high_intent_invoice"]
+    high_intent_unique_dropoffs = result["high_intent_unique_dropoffs"]
     retailer = result["retailer"]
 
-    tab_daily, tab_totals, tab_attribution, tab_product, tab_sales, tab_retailer, tab_audit, tab_downloads = st.tabs(
-        ["Daily Metrics", "Totals", "Attribution", "Product", "Sales", "Retailer", "Event Audit", "Downloads"]
+    tab_daily, tab_totals, tab_attribution, tab_product, tab_sales, tab_high_intent, tab_retailer, tab_audit, tab_downloads = st.tabs(
+        ["Daily Metrics", "Totals", "Attribution", "Product", "Sales", "High Intent", "Retailer", "Event Audit", "Downloads"]
     )
 
     with tab_daily:
@@ -884,6 +896,30 @@ def main() -> None:
         else:
             st.dataframe(sales, use_container_width=True, hide_index=True)
 
+
+    with tab_high_intent:
+        st.subheader("High Intent Dropoffs")
+        st.caption("Session-based dropoffs. This tab intentionally includes PII for follow-up workflows.")
+        st.metric("Unique high-intent dropoff users", high_intent_unique_dropoffs)
+
+        high_signup_tab, high_invoice_tab = st.tabs(["Dropped after Sign Up_total", "Dropped after invoice upload or later"])
+
+        with high_signup_tab:
+            st.markdown("#### Dropped after Sign Up_total")
+            st.caption("Sessions that reached Sign Up_total but did not upload an invoice, add to cart, initiate checkout, or complete payment.")
+            if high_intent_signup.empty:
+                st.warning("No Sign Up_total dropoffs found for this date range.")
+            else:
+                st.dataframe(high_intent_signup, use_container_width=True, hide_index=True)
+
+        with high_invoice_tab:
+            st.markdown("#### Dropped after invoice upload or later")
+            st.caption("Sessions that uploaded an invoice or reached a later step but did not complete payment.")
+            if high_intent_invoice.empty:
+                st.warning("No invoice-or-later dropoffs found for this date range.")
+            else:
+                st.dataframe(high_intent_invoice, use_container_width=True, hide_index=True)
+
     with tab_retailer:
         st.subheader("Retailer Stats")
         st.caption("Uses revised `event_data.invoice.retailer` fields and legacy `retailer_name` / `retailer_detected` fallbacks.")
@@ -979,6 +1015,18 @@ def main() -> None:
             mime="text/csv",
         )
         st.download_button(
+            "Download high intent signup dropoffs CSV",
+            data=dataframe_to_csv_bytes(high_intent_signup),
+            file_name=f"{base}_high_intent_signup_dropoffs.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download high intent invoice dropoffs CSV",
+            data=dataframe_to_csv_bytes(high_intent_invoice),
+            file_name=f"{base}_high_intent_invoice_dropoffs.csv",
+            mime="text/csv",
+        )
+        st.download_button(
             "Download retailer stats CSV",
             data=dataframe_to_csv_bytes(retailer),
             file_name=f"{base}_retailer_stats.csv",
@@ -997,7 +1045,7 @@ def main() -> None:
             mime="text/csv",
         )
 
-    st.caption("Metric logic matches the Clean External reporting script: unique-user counts for user metrics, product counts for product-level metrics, GWP from successful payment checkout totals, and campaign, ad set, ads attribution, UTM event breakdown, product, and retailer rollups from revised payload fields.")
+    st.caption("Metric logic matches the Clean External reporting script: unique-user counts for user metrics, product counts for product-level metrics, GWP from successful payment checkout totals, and campaign, ad set, ads attribution, UTM event breakdown, product, sales, high-intent dropoff, and retailer rollups from revised payload fields.")
 
 
 if __name__ == "__main__":

@@ -49,7 +49,7 @@ except Exception:  # pragma: no cover
 # -----------------------------
 
 PROD_DOMAIN_KEYWORDS = ("surebrightanywhere.com",)
-EXCLUDED_IDENTITY_TERMS = ("abhishek", "santosh", "ankita")
+EXCLUDED_IDENTITY_TERMS = ("abhishek", "santosh", "ankita", "soumyaramtri@gmail.com")
 EXCLUDED_EMAIL_DOMAINS = ("surebright.com", "surerbright.com", "example.com")
 EXCLUDED_URL_TERMS = ("localhost", "webflow.io", "amplifyapp.com", "_meta_test=1")
 
@@ -1314,6 +1314,312 @@ def build_sales_stats(clean_events: list[NormEvent]) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     df = df.sort_values(["Date", "Email", "Product Category", "Product Title"], ascending=[False, True, True, True]).reset_index(drop=True)
     return df
+
+
+
+
+# -----------------------------
+# High Intent dropoff reporting
+# -----------------------------
+
+def pii_value(obj: dict, *paths: str) -> str:
+    for path in paths:
+        val = nested_get(obj, path)
+        if val not in (None, ""):
+            return str(val).strip()
+    return ""
+
+
+def phone_for_event_obj(obj: dict) -> str:
+    for key in ("phone", "phone_number", "phonenumber", "mobile", "mobile_number", "tel"):
+        vals = collect_values_by_key(obj, {key})
+        for val in vals:
+            s = str(val).strip()
+            if s:
+                return s
+    return ""
+
+
+def address_for_event_obj(obj: dict) -> str:
+    parts = []
+    for path in (
+        "actor.address.line1",
+        "actor.address.line2",
+        "customer.address.line1",
+        "customer.address.line2",
+        "billing_address.line1",
+        "billing_address.line2",
+        "shipping_address.line1",
+        "shipping_address.line2",
+        "event_data.invoice.retailer.address.line1",
+        "event_data.invoice.retailer.address.line2",
+    ):
+        val = nested_get(obj, path)
+        if val not in (None, ""):
+            parts.append(str(val).strip())
+    city = pii_value(obj, "actor.address.city", "customer.address.city", "billing_address.city", "shipping_address.city")
+    state = pii_value(obj, "actor.address.state", "customer.address.state", "billing_address.state", "shipping_address.state")
+    postal = pii_value(obj, "actor.address.postal_code", "customer.address.postal_code", "billing_address.postal_code", "shipping_address.postal_code", "zip", "zipcode")
+    country = pii_value(obj, "actor.address.country", "customer.address.country", "billing_address.country", "shipping_address.country")
+    for val in (city, state, postal, country):
+        if val:
+            parts.append(val)
+    return ", ".join(dict.fromkeys(parts))
+
+
+def name_for_event_obj(obj: dict) -> str:
+    direct = pii_value(obj, "actor.name", "customer.name", "name", "event_data.customer.name")
+    if direct:
+        return direct
+    first = pii_value(obj, "actor.first_name", "customer.first_name", "first_name", "firstname", "event_data.customer.first_name")
+    last = pii_value(obj, "actor.last_name", "customer.last_name", "last_name", "lastname", "event_data.customer.last_name")
+    return " ".join([p for p in (first, last) if p]).strip()
+
+
+def high_intent_email_for_event(e: NormEvent) -> str:
+    obj = _safe_json(e)
+    return pii_value(obj, "actor.email", "customer.email", "event_data.customer.email", "data.email", "email") or primary_email(e)
+
+
+HIGH_INTENT_STAGE_ORDER = [
+    ("Sign Up_total", USER_METRIC_EVENTS["Sign Up_total"]),
+    ("First Quote_Success", QUOTE_SUCCESS_EVENTS),
+    ("Offer_Selected", OFFER_SELECTED_EVENTS),
+    ("Invoice Upload_Success", INVOICE_SUCCESS_EVENTS),
+    ("Invoice Upload_Failure", INVOICE_FAILURE_EVENTS),
+    ("Revised Offer", REVISED_OFFER_EVENTS),
+    ("Additional Product", USER_METRIC_EVENTS["Additional Product"]),
+    ("Add to cart", ADD_TO_CART_EVENTS),
+    ("Initiate Checkout", {"initiate_checkout", "pay_now_clicked"}),
+    ("Payment Failed", PAYMENT_FAILED_EVENTS),
+    ("Payment Success", PAYMENT_SUCCESS_EVENTS),
+]
+
+
+def latest_stage_for_events(events: list[NormEvent]) -> str:
+    latest = ""
+    latest_rank = -1
+    for e in events:
+        for rank, (stage, event_set) in enumerate(HIGH_INTENT_STAGE_ORDER):
+            if e.event_name in event_set and rank >= latest_rank:
+                latest = stage
+                latest_rank = rank
+    return latest
+
+
+def product_summary_for_session(events: list[NormEvent]) -> dict[str, Any]:
+    categories: list[str] = []
+    titles: list[str] = []
+    brands: list[str] = []
+    manufacturers: list[str] = []
+    models: list[str] = []
+    warranty_names: list[str] = []
+    warranty_prices: list[float] = []
+    retailers: list[str] = []
+    gwp_total = 0.0
+
+    for e in events:
+        obj = _safe_json(e)
+        retailer = retailer_values(obj).get("retailer_name") or ""
+        if retailer and retailer != "Unknown":
+            retailers.append(retailer)
+        gwp_total += float(e.gwp or 0.0)
+
+        items = get_line_items(obj)
+        if not items:
+            raw_items = nested_get(obj, "raw.items", "data.items")
+            if isinstance(raw_items, list):
+                items = [i for i in raw_items if isinstance(i, dict)]
+
+        for item in items or []:
+            product = item.get("product") if isinstance(item.get("product"), dict) else {}
+            protection = item.get("protection") if isinstance(item.get("protection"), dict) else {}
+            category = product.get("category") if isinstance(product.get("category"), dict) else {}
+
+            cat = str(category.get("name") or product.get("category") or item.get("item_category") or item.get("category") or "").strip()
+            title = str(product.get("title") or item.get("item_name") or item.get("name") or product.get("description") or "").strip()
+            brand = str(product.get("brand") or "").strip()
+            manufacturer = str(nested_get(obj, "manufacturer.name") or product.get("brand") or "").strip()
+            model = str(nested_get(obj, "manufacturer.model_number") or product.get("sku") or "").strip()
+            warranty_name = str(protection.get("plan_name") or protection.get("name") or item.get("item_variant") or "").strip()
+            warranty_price = parse_money(
+                protection.get("plan_price")
+                or protection.get("price")
+                or item.get("plan_price")
+                or item.get("warrantyPrice")
+                or item.get("warranty_price")
+                or item.get("price")
+            )
+
+            if cat:
+                categories.append(cat)
+            if title:
+                titles.append(title)
+            if brand:
+                brands.append(brand)
+            if manufacturer:
+                manufacturers.append(manufacturer)
+            if model:
+                models.append(model)
+            if warranty_name:
+                warranty_names.append(warranty_name)
+            if warranty_price > 0:
+                warranty_prices.append(warranty_price)
+
+    def joined(vals: list[Any]) -> str:
+        return ", ".join(str(v) for v in dict.fromkeys(vals) if str(v).strip())
+
+    return {
+        "Product Category": joined(categories),
+        "Product Title": joined(titles),
+        "Product Brand": joined(brands),
+        "Manufacturer": joined(manufacturers),
+        "Model Number": joined(models),
+        "Warranty / Plan Name": joined(warranty_names),
+        "Warranty Price": round(float(sum(warranty_prices)), 2),
+        "Retailer": joined(retailers),
+        "Gross GWP $": round(float(gwp_total), 2),
+    }
+
+
+def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    """Build session-based high-intent dropoff tables.
+
+    Table 1: sessions that reached Sign Up_total but did not upload an invoice, add to cart,
+    initiate checkout, or purchase.
+    Table 2: sessions that uploaded an invoice or reached a later stage but did not purchase.
+
+    Uses session_id as the primary stitching key, with a fallback to identity_key only
+    when session_id is missing.
+    """
+    session_events: dict[str, list[NormEvent]] = defaultdict(list)
+    for e in clean_events:
+        sid = str(e.session_id or "").strip()
+        key = f"session:{sid}" if sid else f"identity:{e.identity_key}"
+        session_events[key].append(e)
+
+    signup_rows: list[dict[str, Any]] = []
+    invoice_rows: list[dict[str, Any]] = []
+
+    for session_key, events in session_events.items():
+        event_names = {e.event_name for e in events}
+        has_signup = bool(event_names & USER_METRIC_EVENTS["Sign Up_total"])
+        has_invoice_success = bool(event_names & INVOICE_SUCCESS_EVENTS)
+        has_invoice_failure = bool(event_names & INVOICE_FAILURE_EVENTS)
+        has_invoice_or_later = bool(
+            event_names
+            & (
+                INVOICE_SUCCESS_EVENTS
+                | INVOICE_FAILURE_EVENTS
+                | REVISED_OFFER_EVENTS
+                | USER_METRIC_EVENTS["Additional Product"]
+                | ADD_TO_CART_EVENTS
+                | {"initiate_checkout", "pay_now_clicked"}
+                | PAYMENT_FAILED_EVENTS
+            )
+        )
+        has_downstream_after_signup = bool(
+            event_names
+            & (
+                INVOICE_SUCCESS_EVENTS
+                | INVOICE_FAILURE_EVENTS
+                | ADD_TO_CART_EVENTS
+                | {"initiate_checkout", "pay_now_clicked"}
+                | PAYMENT_SUCCESS_EVENTS
+            )
+        )
+        has_payment_success = bool(event_names & PAYMENT_SUCCESS_EVENTS)
+
+        if has_payment_success:
+            continue
+
+        events_sorted = sorted(events, key=lambda x: x.event_time or "")
+        first = events_sorted[0]
+        last = events_sorted[-1]
+        first_obj = _safe_json(first)
+        last_obj = _safe_json(last)
+
+        identity_events = sorted(events, key=lambda x: (0 if high_intent_email_for_event(x) else 1, x.event_time or ""))
+        pii_event = identity_events[0] if identity_events else last
+        pii_obj = _safe_json(pii_event)
+
+        email = high_intent_email_for_event(pii_event)
+        name = name_for_event_obj(pii_obj)
+        phone = phone_for_event_obj(pii_obj)
+        address = address_for_event_obj(pii_obj)
+
+        product_bits = product_summary_for_session(events)
+
+        attr = attribution_values(first_obj)
+        row = {
+            "Session ID": str(first.session_id or session_key.replace("session:", "")),
+            "User Key": str(first.identity_key),
+            "Email": email,
+            "Name": name,
+            "Phone": phone,
+            "Address": address,
+            "Lead ID": str(first.lead_id or ""),
+            "First Event Date": first.date,
+            "Last Event Date": last.date,
+            "Last Stage": latest_stage_for_events(events),
+            "Event Count": int(len(events)),
+            "Invoice Uploaded": "Yes" if has_invoice_success else "No",
+            "Invoice Upload Failed": "Yes" if has_invoice_failure else "No",
+            "UTM Source": attr["utm_source"],
+            "UTM Medium": attr["utm_medium"],
+            "UTM Campaign": attr["utm_campaign"],
+        }
+        row.update(product_bits)
+
+        if has_signup and not has_downstream_after_signup:
+            signup_rows.append(row)
+        elif has_invoice_or_later:
+            invoice_rows.append(row)
+
+    columns = [
+        "Session ID",
+        "User Key",
+        "Email",
+        "Name",
+        "Phone",
+        "Address",
+        "Lead ID",
+        "First Event Date",
+        "Last Event Date",
+        "Last Stage",
+        "Event Count",
+        "Invoice Uploaded",
+        "Invoice Upload Failed",
+        "Product Category",
+        "Product Title",
+        "Product Brand",
+        "Manufacturer",
+        "Model Number",
+        "Warranty / Plan Name",
+        "Warranty Price",
+        "Retailer",
+        "Gross GWP $",
+        "UTM Source",
+        "UTM Medium",
+        "UTM Campaign",
+    ]
+
+    signup_df = pd.DataFrame(signup_rows, columns=columns)
+    invoice_df = pd.DataFrame(invoice_rows, columns=columns)
+
+    for df in (signup_df, invoice_df):
+        if not df.empty:
+            df.sort_values(["Last Event Date", "Email", "Session ID"], ascending=[False, True, True], inplace=True)
+            df.reset_index(drop=True, inplace=True)
+
+    combined = pd.concat([signup_df, invoice_df], ignore_index=True)
+    if combined.empty:
+        unique_dropoff_users = 0
+    else:
+        user_keys = combined["Email"].where(combined["Email"].astype(str).str.strip() != "", combined["User Key"])
+        unique_dropoff_users = int(user_keys.nunique())
+
+    return signup_df, invoice_df, unique_dropoff_users
 
 
 
