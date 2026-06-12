@@ -1,46 +1,24 @@
-# High Intent tab update
+# High Intent table update
 
-Built on top of the stable Sales-tab version.
+Built on top of the High Intent version.
 
 Changes:
-- Adds `soumyaramtri@gmail.com` to Clean External exclusions.
-- Adds a new `High Intent` tab.
-- Adds a top-level ticker: Unique high-intent dropoff users.
-- Adds table 1: Dropped after Sign Up_total.
-- Adds table 2: Dropped after invoice upload or later.
-- Uses session_id as the primary key for dropoff detection, with identity_key fallback if session_id is missing.
-- Includes PII in High Intent tables for follow-up workflows.
+- Removes `User Key` from both High Intent tables.
+- Sign Up_total dropoff table now includes all fields from the event form/forms object.
+- Invoice-or-later dropoff table now uses name/email from the event form object when available.
+- Invoice-or-later dropoff table now includes full line_items object data in `Line Items Data`.
+- Invoice-or-later dropoff table also flattens the first line item into `Line Item: ...` columns for easier scanning.
 
-Dropoff logic:
-- Sign Up_total dropoff: session reached Sign Up_total but did not upload invoice, add to cart, initiate checkout, or complete payment.
-- Invoice-or-later dropoff: session uploaded invoice or reached a later stage but did not complete payment.
-
-High Intent tables include:
-- Session ID
-- User Key
-- Email
-- Name
-- Phone
-- Address
-- Lead ID
-- First Event Date
-- Last Event Date
-- Last Stage
-- Event Count
-- Invoice Uploaded
-- Invoice Upload Failed
-- Product / warranty details
-- UTM fields
-
-Preserved from stable version:
-- Sales tab
-- Product table aligned to Daily Metrics
-- Product Events removed
-- Product Email sourced from actor.email first
-- Sign Up_total product metric counts sign_up_total
-- Initiate Checkout product metric counts initiate_checkout
-- Compatibility aliases for older helper names
-- Clean External exclusions for abhishek, santosh, ankita
+Preserved:
+- `soumyaramtri@gmail.com` exclusion.
+- High Intent unique dropoff ticker.
+- Sales tab.
+- Product table aligned to Daily Metrics.
+- Product Events removed.
+- Product Email sourced from actor.email first.
+- Sign Up_total product metric counts sign_up_total.
+- Initiate Checkout product metric counts initiate_checkout.
+- Clean External exclusions for abhishek, santosh, ankita, and soumyaramtri@gmail.com.
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py

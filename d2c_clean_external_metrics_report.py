@@ -1482,15 +1482,123 @@ def product_summary_for_session(events: list[NormEvent]) -> dict[str, Any]:
     }
 
 
+
+def compact_json_for_table(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    try:
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+    except Exception:
+        return str(value)
+
+
+def flatten_for_table(value: Any, prefix: str = "") -> dict[str, str]:
+    """Flatten dict/list data into readable table columns."""
+    out: dict[str, str] = {}
+
+    def walk(v: Any, key: str) -> None:
+        if isinstance(v, dict):
+            if not v:
+                out[key] = ""
+            for k, child in v.items():
+                child_key = f"{key}.{k}" if key else str(k)
+                walk(child, child_key)
+        elif isinstance(v, list):
+            out[key] = compact_json_for_table(v)
+        else:
+            out[key] = "" if v is None else str(v)
+
+    walk(value, prefix)
+    return out
+
+
+def form_object_for_event_obj(obj: dict) -> Any:
+    """Return the form/forms object from the event, with broad schema support."""
+    candidates = [
+        nested_get(obj, "event_data.forms"),
+        nested_get(obj, "event_data.form"),
+        nested_get(obj, "forms"),
+        nested_get(obj, "form"),
+        nested_get(obj, "event_data.form.fields"),
+        nested_get(obj, "raw.form"),
+        nested_get(obj, "raw.forms"),
+        nested_get(obj, "data.form"),
+        nested_get(obj, "data.forms"),
+    ]
+    for candidate in candidates:
+        if candidate not in (None, "", {}, []):
+            return candidate
+    return {}
+
+
+def flatten_form_columns(obj: dict, column_prefix: str = "Form") -> dict[str, str]:
+    form_obj = form_object_for_event_obj(obj)
+    if not form_obj:
+        return {}
+    flat = flatten_for_table(form_obj)
+    return {f"{column_prefix}: {k}": v for k, v in flat.items()}
+
+
+def form_value(obj: dict, *names: str) -> str:
+    """Find a value inside form/forms object by key name, case-insensitive."""
+    form_obj = form_object_for_event_obj(obj)
+    if not form_obj:
+        return ""
+    wanted = {n.lower().replace("_", "").replace(" ", "") for n in names}
+    found = ""
+
+    def walk(v: Any) -> None:
+        nonlocal found
+        if found:
+            return
+        if isinstance(v, dict):
+            for k, child in v.items():
+                nk = str(k).lower().replace("_", "").replace(" ", "")
+                if nk in wanted and child not in (None, ""):
+                    found = str(child).strip()
+                    return
+                walk(child)
+        elif isinstance(v, list):
+            for child in v:
+                walk(child)
+
+    walk(form_obj)
+    return found
+
+
+def first_event_with_any(events: list[NormEvent], event_sets: list[set[str]]) -> NormEvent | None:
+    wanted: set[str] = set()
+    for s in event_sets:
+        wanted |= set(s)
+    for e in sorted(events, key=lambda x: x.event_time or ""):
+        if e.event_name in wanted:
+            return e
+    return None
+
+
+def line_items_full_data_for_session(events: list[NormEvent]) -> list[Any]:
+    all_items: list[Any] = []
+    for e in sorted(events, key=lambda x: x.event_time or ""):
+        obj = _safe_json(e)
+        items = get_line_items(obj)
+        if not items:
+            raw_items = nested_get(obj, "event_data.line_items", "line_items", "raw.items", "data.items")
+            if isinstance(raw_items, list):
+                items = [i for i in raw_items if isinstance(i, dict)]
+        for item in items or []:
+            all_items.append(item)
+    return all_items
+
+
 def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFrame, pd.DataFrame, int]:
     """Build session-based high-intent dropoff tables.
 
     Table 1: sessions that reached Sign Up_total but did not upload an invoice, add to cart,
-    initiate checkout, or purchase.
+    initiate checkout, or purchase. It includes all form/forms fields from the signup event.
     Table 2: sessions that uploaded an invoice or reached a later stage but did not purchase.
+    It includes name/email from the form object and full line_items object data.
 
-    Uses session_id as the primary stitching key, with a fallback to identity_key only
-    when session_id is missing.
+    Uses session_id as the primary stitching key, with identity_key fallback if session_id is missing.
     """
     session_events: dict[str, list[NormEvent]] = defaultdict(list)
     for e in clean_events:
@@ -1500,6 +1608,7 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
 
     signup_rows: list[dict[str, Any]] = []
     invoice_rows: list[dict[str, Any]] = []
+    unique_user_ids: set[str] = set()
 
     for session_key, events in session_events.items():
         event_names = {e.event_name for e in events}
@@ -1537,7 +1646,12 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
         first = events_sorted[0]
         last = events_sorted[-1]
         first_obj = _safe_json(first)
-        last_obj = _safe_json(last)
+
+        signup_event = first_event_with_any(events, [USER_METRIC_EVENTS["Sign Up_total"]])
+        invoice_event = first_event_with_any(events, [INVOICE_SUCCESS_EVENTS, INVOICE_FAILURE_EVENTS]) or first_event_with_any(
+            events,
+            [REVISED_OFFER_EVENTS, USER_METRIC_EVENTS["Additional Product"], ADD_TO_CART_EVENTS, {"initiate_checkout", "pay_now_clicked"}, PAYMENT_FAILED_EVENTS],
+        )
 
         identity_events = sorted(events, key=lambda x: (0 if high_intent_email_for_event(x) else 1, x.event_time or ""))
         pii_event = identity_events[0] if identity_events else last
@@ -1549,11 +1663,10 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
         address = address_for_event_obj(pii_obj)
 
         product_bits = product_summary_for_session(events)
-
         attr = attribution_values(first_obj)
-        row = {
+
+        base_row = {
             "Session ID": str(first.session_id or session_key.replace("session:", "")),
-            "User Key": str(first.identity_key),
             "Email": email,
             "Name": name,
             "Phone": phone,
@@ -1569,16 +1682,40 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
             "UTM Medium": attr["utm_medium"],
             "UTM Campaign": attr["utm_campaign"],
         }
-        row.update(product_bits)
+        base_row.update(product_bits)
 
         if has_signup and not has_downstream_after_signup:
+            row = dict(base_row)
+            signup_obj = _safe_json(signup_event) if signup_event else {}
+            row.update(flatten_form_columns(signup_obj, column_prefix="Form"))
             signup_rows.append(row)
-        elif has_invoice_or_later:
-            invoice_rows.append(row)
+            unique_user_ids.add(email or first.identity_key or session_key)
 
-    columns = [
+        elif has_invoice_or_later:
+            row = dict(base_row)
+            invoice_obj = _safe_json(invoice_event) if invoice_event else {}
+
+            form_name = form_value(invoice_obj, "name", "full_name", "fullname", "first_name", "firstname", "last_name", "lastname")
+            form_email = form_value(invoice_obj, "email", "email_address", "emailaddress")
+            if form_name:
+                row["Name"] = form_name
+            if form_email:
+                row["Email"] = form_email
+
+            line_items_data = line_items_full_data_for_session(events)
+            row["Line Items Data"] = compact_json_for_table(line_items_data)
+
+            # Also expose first line item fields as columns for easier scanning, while
+            # keeping the full line_items object in Line Items Data.
+            if line_items_data:
+                first_item_flat = flatten_for_table(line_items_data[0])
+                row.update({f"Line Item: {k}": v for k, v in first_item_flat.items()})
+
+            invoice_rows.append(row)
+            unique_user_ids.add((form_email or email) or first.identity_key or session_key)
+
+    base_columns = [
         "Session ID",
-        "User Key",
         "Email",
         "Name",
         "Phone",
@@ -1604,23 +1741,26 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
         "UTM Campaign",
     ]
 
-    signup_df = pd.DataFrame(signup_rows, columns=columns)
-    invoice_df = pd.DataFrame(invoice_rows, columns=columns)
+    signup_form_cols = sorted({k for row in signup_rows for k in row.keys() if k.startswith("Form: ")})
+    invoice_extra_cols = ["Line Items Data"] + sorted({k for row in invoice_rows for k in row.keys() if k.startswith("Line Item: ")})
+
+    signup_columns = base_columns + signup_form_cols
+    invoice_columns = base_columns + [c for c in invoice_extra_cols if c not in base_columns]
+
+    signup_df = pd.DataFrame(signup_rows)
+    invoice_df = pd.DataFrame(invoice_rows)
+
+    signup_df = signup_df.reindex(columns=signup_columns)
+    invoice_df = invoice_df.reindex(columns=invoice_columns)
 
     for df in (signup_df, invoice_df):
         if not df.empty:
             df.sort_values(["Last Event Date", "Email", "Session ID"], ascending=[False, True, True], inplace=True)
             df.reset_index(drop=True, inplace=True)
 
-    combined = pd.concat([signup_df, invoice_df], ignore_index=True)
-    if combined.empty:
-        unique_dropoff_users = 0
-    else:
-        user_keys = combined["Email"].where(combined["Email"].astype(str).str.strip() != "", combined["User Key"])
-        unique_dropoff_users = int(user_keys.nunique())
+    unique_dropoff_users = int(len({u for u in unique_user_ids if str(u).strip()}))
 
     return signup_df, invoice_df, unique_dropoff_users
-
 
 
 def build_product_stats(clean_events: list[NormEvent]) -> pd.DataFrame:

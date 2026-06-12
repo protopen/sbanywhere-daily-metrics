@@ -899,14 +899,14 @@ def main() -> None:
 
     with tab_high_intent:
         st.subheader("High Intent Dropoffs")
-        st.caption("Session-based dropoffs. This tab intentionally includes PII for follow-up workflows.")
+        st.caption("Session-based dropoffs. This tab intentionally includes PII for follow-up workflows. User Key is hidden from both tables.")
         st.metric("Unique high-intent dropoff users", high_intent_unique_dropoffs)
 
         high_signup_tab, high_invoice_tab = st.tabs(["Dropped after Sign Up_total", "Dropped after invoice upload or later"])
 
         with high_signup_tab:
             st.markdown("#### Dropped after Sign Up_total")
-            st.caption("Sessions that reached Sign Up_total but did not upload an invoice, add to cart, initiate checkout, or complete payment.")
+            st.caption("Sessions that reached Sign Up_total but did not upload an invoice, add to cart, initiate checkout, or complete payment. Includes all form/forms fields from the signup event.")
             if high_intent_signup.empty:
                 st.warning("No Sign Up_total dropoffs found for this date range.")
             else:
@@ -914,7 +914,7 @@ def main() -> None:
 
         with high_invoice_tab:
             st.markdown("#### Dropped after invoice upload or later")
-            st.caption("Sessions that uploaded an invoice or reached a later step but did not complete payment.")
+            st.caption("Sessions that uploaded an invoice or reached a later step but did not complete payment. Includes name/email from the event form object and full line_items data.")
             if high_intent_invoice.empty:
                 st.warning("No invoice-or-later dropoffs found for this date range.")
             else:
