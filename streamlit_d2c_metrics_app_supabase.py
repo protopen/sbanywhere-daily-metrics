@@ -906,7 +906,7 @@ def main() -> None:
 
         with high_signup_tab:
             st.markdown("#### Dropped after Sign Up_total")
-            st.caption("Sessions that reached Sign Up_total but did not upload an invoice, add to cart, initiate checkout, or complete payment. Includes all form/forms fields from the signup event.")
+            st.caption("Sessions that reached Sign Up_total but did not upload an invoice, add to cart, initiate checkout, or complete payment. Shows only first event date, last event date, Name, Email, last stage, product category, and product price.")
             if high_intent_signup.empty:
                 st.warning("No Sign Up_total dropoffs found for this date range.")
             else:

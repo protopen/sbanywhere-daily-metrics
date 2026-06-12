@@ -1,24 +1,43 @@
-# High Intent table update
+# High Intent Sign Up table cleanup
 
-Built on top of the High Intent version.
+Built on top of the High Intent forms + line_items version.
 
-Changes:
-- Removes `User Key` from both High Intent tables.
-- Sign Up_total dropoff table now includes all fields from the event form/forms object.
-- Invoice-or-later dropoff table now uses name/email from the event form object when available.
-- Invoice-or-later dropoff table now includes full line_items object data in `Line Items Data`.
-- Invoice-or-later dropoff table also flattens the first line item into `Line Item: ...` columns for easier scanning.
+Changes to `Dropped after Sign Up_total` table:
+- Removes unwanted fields:
+  - form_name
+  - form_id
+  - fields.method
+  - retailer
+  - gross gwp
+  - product brand
+  - manufacturer
+  - warranty / plan name
+  - product title
+  - invoice uploaded
+  - invoice upload failed
+  - event count
+  - name / phone / address / lead ID / email / session id from base row
+- Final displayed columns are exactly:
+  1. First Event Date
+  2. Last Event Date
+  3. Name
+  4. Email
+  5. Last Stage
+  6. Product Category
+  7. Product Price
+
+Notes:
+- Name is sourced from `fields.name` / form name equivalents.
+- Email is sourced from `fields.email` / form email equivalents.
+- Product Category and Product Price are sourced from form fields where available.
 
 Preserved:
-- `soumyaramtri@gmail.com` exclusion.
+- Invoice dropoff table keeps name/email from form object and line_items object data.
+- User Key remains removed from High Intent tables.
 - High Intent unique dropoff ticker.
+- soumyaramtri@gmail.com exclusion.
 - Sales tab.
-- Product table aligned to Daily Metrics.
-- Product Events removed.
-- Product Email sourced from actor.email first.
-- Sign Up_total product metric counts sign_up_total.
-- Initiate Checkout product metric counts initiate_checkout.
-- Clean External exclusions for abhishek, santosh, ankita, and soumyaramtri@gmail.com.
+- Product table changes and prior fixes.
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py

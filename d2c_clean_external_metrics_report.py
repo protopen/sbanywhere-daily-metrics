@@ -1685,11 +1685,41 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
         base_row.update(product_bits)
 
         if has_signup and not has_downstream_after_signup:
-            row = dict(base_row)
             signup_obj = _safe_json(signup_event) if signup_event else {}
-            row.update(flatten_form_columns(signup_obj, column_prefix="Form"))
+
+            form_name_signup = form_value(signup_obj, "name", "full_name", "fullname", "first_name", "firstname", "last_name", "lastname")
+            form_email_signup = form_value(signup_obj, "email", "email_address", "emailaddress")
+            form_product_category = form_value(
+                signup_obj,
+                "product_category",
+                "productcategory",
+                "category",
+                "category_name",
+                "categoryname",
+                "sb_category_name",
+                "sbcategoryname",
+            )
+            form_product_price = form_value(
+                signup_obj,
+                "product_price",
+                "productprice",
+                "price",
+                "value",
+                "product_value",
+                "productvalue",
+            )
+
+            row = {
+                "First Event Date": first.date,
+                "Last Event Date": last.date,
+                "Name": form_name_signup,
+                "Email": form_email_signup,
+                "Last Stage": latest_stage_for_events(events),
+                "Product Category": form_product_category or product_bits.get("Product Category", ""),
+                "Product Price": form_product_price,
+            }
             signup_rows.append(row)
-            unique_user_ids.add(email or first.identity_key or session_key)
+            unique_user_ids.add(form_email_signup or email or first.identity_key or session_key)
 
         elif has_invoice_or_later:
             row = dict(base_row)
@@ -1741,10 +1771,16 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
         "UTM Campaign",
     ]
 
-    signup_form_cols = sorted({k for row in signup_rows for k in row.keys() if k.startswith("Form: ")})
+    signup_columns = [
+        "First Event Date",
+        "Last Event Date",
+        "Name",
+        "Email",
+        "Last Stage",
+        "Product Category",
+        "Product Price",
+    ]
     invoice_extra_cols = ["Line Items Data"] + sorted({k for row in invoice_rows for k in row.keys() if k.startswith("Line Item: ")})
-
-    signup_columns = base_columns + signup_form_cols
     invoice_columns = base_columns + [c for c in invoice_extra_cols if c not in base_columns]
 
     signup_df = pd.DataFrame(signup_rows)
@@ -1753,10 +1789,13 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
     signup_df = signup_df.reindex(columns=signup_columns)
     invoice_df = invoice_df.reindex(columns=invoice_columns)
 
-    for df in (signup_df, invoice_df):
-        if not df.empty:
-            df.sort_values(["Last Event Date", "Email", "Session ID"], ascending=[False, True, True], inplace=True)
-            df.reset_index(drop=True, inplace=True)
+    if not signup_df.empty:
+        signup_df.sort_values(["Last Event Date", "Email"], ascending=[False, True], inplace=True)
+        signup_df.reset_index(drop=True, inplace=True)
+
+    if not invoice_df.empty:
+        invoice_df.sort_values(["Last Event Date", "Email", "Session ID"], ascending=[False, True, True], inplace=True)
+        invoice_df.reset_index(drop=True, inplace=True)
 
     unique_dropoff_users = int(len({u for u in unique_user_ids if str(u).strip()}))
 
