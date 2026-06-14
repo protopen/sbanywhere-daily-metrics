@@ -1613,7 +1613,7 @@ def build_high_intent_dropoffs(clean_events: list[NormEvent]) -> tuple[pd.DataFr
     for session_key, events in session_events.items():
         event_names = {e.event_name for e in events}
         has_signup = bool(event_names & USER_METRIC_EVENTS["Sign Up_total"])
-        has_invoice_success = bool(event_names & INVOICE_SUCCESS_EVENTS)
+        has_invoice_success = bool(event_names & (INVOICE_SUCCESS_EVENTS | REVISED_OFFER_EVENTS))
         has_invoice_failure = bool(event_names & INVOICE_FAILURE_EVENTS)
         has_invoice_or_later = bool(
             event_names

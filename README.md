@@ -1,16 +1,16 @@
-# Daily Metrics revised_offer_shown column update
+# High Intent Invoice Uploaded update
 
-Built on top of the current High Intent invoice-slim version.
+Built on top of the current Daily revised_offer_shown version.
 
 Change:
-- Adds `revised_offer_shown` to the Daily Metrics date-wise compact table.
-- The new column appears immediately after `Invoice Upload_Success`.
-- It maps to the existing Daily Metrics column `Revised Offer`.
+- In High Intent > Dropped after invoice upload or later, the `Invoice Uploaded` column now says `Yes` if either of these events happened in the session:
+  - invoice_upload_success / invoice_uploaded
+  - revised_offer_shown / revised_offer
 
 Preserved:
-- High Intent tab changes.
-- Invoice dropoff slim table.
-- Sign Up dropoff slim table.
+- Daily Metrics revised_offer_shown column.
+- High Intent invoice slim table.
+- High Intent signup slim table.
 - soumyaramtri@gmail.com exclusion.
 - Sales tab.
 - Product table changes and prior fixes.
