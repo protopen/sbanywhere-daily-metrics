@@ -459,7 +459,7 @@ def process_uploaded_file(
 
 SANKEY_STAGE_EVENTS = {
     "Enquiry Attempted": {"homepage_form_submit", "enquiry_attempted"},
-    "Sign Up_total": {"lead_signup", "quote_lead_captured", "signup_completed", "sign_up_completed"},
+    "Sign Up_total": {"lead_signup", "quote_lead_captured", "signup_completed", "sign_up_completed", "sign_up_total", "signup_total", "sign_up"},
     "First Quote_Success": {"quote_generated", "first_quote_success", "offer_generation_success"},
     "Offer_Selected": {"plan_selected", "offer_selected"},
     "Invoice Upload_Success": {"invoice_uploaded", "invoice_upload_success"},
@@ -493,7 +493,13 @@ def _stage_for_event_name(event_name: str) -> Optional[str]:
 
 
 def build_sankey_links_from_audit(clean_audit: pd.DataFrame) -> pd.DataFrame:
-    """Build user-progression Sankey links from clean event-level audit rows."""
+    """Build a strict staged funnel Sankey from clean event-level audit rows.
+
+    This intentionally does not connect users who skipped earlier stages into later
+    stages. Example: if a session has First Quote_Success but no Enquiry Attempted
+    in the selected date range, it is excluded from the strict Enquiry -> ... path.
+    This keeps the funnel non-increasing, so First Quote cannot exceed Enquiry.
+    """
     if clean_audit.empty or "event_name" not in clean_audit.columns:
         return pd.DataFrame(columns=["source", "target", "value"])
 
@@ -503,39 +509,54 @@ def build_sankey_links_from_audit(clean_audit: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["source", "target", "value"])
 
-    if "identity_key" not in df.columns:
-        df["identity_key"] = "unknown"
-    if "event_time" in df.columns:
-        df = df.sort_values(["identity_key", "event_time"])
+    # Use session_id for journey stitching where available, because Sankey is a
+    # session flow. Fall back to identity_key only when session_id is blank.
+    if "session_id" in df.columns and "identity_key" in df.columns:
+        session_vals = df["session_id"].fillna("").astype(str).str.strip()
+        identity_vals = df["identity_key"].fillna("").astype(str).str.strip()
+        df["journey_key"] = session_vals.where(session_vals != "", identity_vals)
+    elif "session_id" in df.columns:
+        df["journey_key"] = df["session_id"].fillna("").astype(str).str.strip()
+    elif "identity_key" in df.columns:
+        df["journey_key"] = df["identity_key"].fillna("").astype(str).str.strip()
+    else:
+        df["journey_key"] = "unknown"
+
+    df["journey_key"] = df["journey_key"].replace("", "unknown")
 
     link_counts: dict[tuple[str, str], int] = {}
+    main_path_sets = [SANKEY_STAGE_EVENTS[stage] for stage in SANKEY_MAIN_PATH]
 
-    for _, g in df.groupby("identity_key", dropna=False):
+    for _, g in df.groupby("journey_key", dropna=False):
         reached = set(g["stage"].dropna().astype(str).tolist())
-        ordered_reached = [stage for stage in SANKEY_MAIN_PATH if stage in reached]
 
-        # Connect each reached business stage to the next reached business stage for that user.
-        for source, target in zip(ordered_reached, ordered_reached[1:]):
+        # Strict cumulative funnel: a journey can enter stage N only if it has
+        # reached every previous stage in the main path.
+        current_prefix_ok = True
+        strict_reached: list[str] = []
+        for stage in SANKEY_MAIN_PATH:
+            if current_prefix_ok and stage in reached:
+                strict_reached.append(stage)
+            else:
+                current_prefix_ok = False
+
+        for source, target in zip(strict_reached, strict_reached[1:]):
             link_counts[(source, target)] = link_counts.get((source, target), 0) + 1
 
-        # Add terminal failure branches without double-counting users who eventually succeeded.
-        if "Invoice Upload_Failure" in reached and "Invoice Upload_Success" not in reached:
-            previous = None
-            for stage in ["Offer_Selected", "First Quote_Success", "Sign Up_total", "Enquiry Attempted"]:
-                if stage in reached:
-                    previous = stage
-                    break
-            if previous:
-                link_counts[(previous, "Invoice Upload_Failure")] = link_counts.get((previous, "Invoice Upload_Failure"), 0) + 1
+        # Terminal failure branches are also anchored to the deepest strict stage
+        # already reached, so they cannot inflate downstream nodes.
+        if strict_reached:
+            deepest = strict_reached[-1]
+            if "Invoice Upload_Failure" in reached and "Invoice Upload_Success" not in reached:
+                # Prefer to branch from Offer/Quote/Signup if the user reached those strictly.
+                branch_from = deepest
+                if branch_from in {"Payment Success", "Payment Attempted", "Add to Cart_Success", "Invoice Upload_Success"}:
+                    branch_from = "Offer_Selected" if "Offer_Selected" in strict_reached else deepest
+                link_counts[(branch_from, "Invoice Upload_Failure")] = link_counts.get((branch_from, "Invoice Upload_Failure"), 0) + 1
 
-        if "Payment Failed" in reached and "Payment Success" not in reached:
-            previous = None
-            for stage in ["Payment Attempted", "Add to Cart_Success", "Invoice Upload_Success", "Offer_Selected"]:
-                if stage in reached:
-                    previous = stage
-                    break
-            if previous:
-                link_counts[(previous, "Payment Failed")] = link_counts.get((previous, "Payment Failed"), 0) + 1
+            if "Payment Failed" in reached and "Payment Success" not in reached:
+                branch_from = deepest
+                link_counts[(branch_from, "Payment Failed")] = link_counts.get((branch_from, "Payment Failed"), 0) + 1
 
     rows = [{"source": s, "target": t, "value": v} for (s, t), v in link_counts.items() if v > 0]
     if not rows:
@@ -828,7 +849,7 @@ def main() -> None:
 
             with daily_sankey_tab:
                 st.markdown("#### Funnel Sankey")
-                st.caption("Shows unique clean external users progressing between funnel stages in the selected date range. Node label text uses a bright color for readability.")
+                st.caption("Strict session-based funnel: later stages are counted only when the same session reached all earlier funnel stages in the selected date range. Node label text uses a bright color for readability.")
                 render_daily_sankey(clean_audit)
 
     with tab_totals:
