@@ -559,6 +559,7 @@ def build_daily_metrics_summary_table(daily: pd.DataFrame) -> pd.DataFrame:
                 "Sign Up_total",
                 "Add to cart",
                 "Invoice Upload_Success",
+                "revised_offer_shown",
                 "Initiate Checkout",
                 "Payment Success",
             ]
@@ -570,6 +571,7 @@ def build_daily_metrics_summary_table(daily: pd.DataFrame) -> pd.DataFrame:
     out["Sign Up_total"] = daily.get("Sign Up_total", 0)
     out["Add to cart"] = daily.get("Add to Cart_Success", 0)
     out["Invoice Upload_Success"] = daily.get("Invoice Upload_Success", 0)
+    out["revised_offer_shown"] = daily.get("Revised Offer", 0)
     out["Initiate Checkout"] = daily.get("Payment Attempted", 0)
     out["Payment Success"] = daily.get("Payment Success", 0)
     return out
