@@ -461,13 +461,12 @@ SANKEY_STAGE_EVENTS = {
     "Enquiry Attempted": {"homepage_form_submit", "enquiry_attempted"},
     "Sign Up_total": {"lead_signup", "quote_lead_captured", "signup_completed", "sign_up_completed", "sign_up_total", "signup_total", "sign_up"},
     "First Quote_Success": {"quote_generated", "first_quote_success", "offer_generation_success"},
-    "Offer_Selected": {"plan_selected", "offer_selected"},
-    "Invoice Upload_Success": {"invoice_uploaded", "invoice_upload_success"},
-    "Invoice Upload_Failure": {"invoice_upload_failed", "invoice_upload_failure"},
-    "Revised Offer": {"revised_offer_shown", "revised_offer"},
-    "Additional Product": {"additional_product_detected", "additional_product"},
     "Add to Cart_Success": {"cart_confirmed", "add_to_cart"},
-    "Payment Attempted": {"pay_now_clicked", "initiate_checkout"},
+    "Invoice Upload_Success": {"invoice_uploaded", "invoice_upload_success"},
+    "Revised_offer_shown": {"revised_offer_shown", "revised_offer"},
+    "Plan_selected": {"plan_selected", "offer_selected"},
+    "Initiate_checkout": {"initiate_checkout"},
+    "Payment Attempted": {"pay_now_clicked", "payment_attempted"},
     "Payment Success": {"payment_completed", "payment_success", "payment_succeeded", "purchase"},
     "Payment Failed": {"payment_failed"},
 }
@@ -476,9 +475,11 @@ SANKEY_MAIN_PATH = [
     "Enquiry Attempted",
     "Sign Up_total",
     "First Quote_Success",
-    "Offer_Selected",
-    "Invoice Upload_Success",
     "Add to Cart_Success",
+]
+
+SANKEY_TAIL_PATH = [
+    "Initiate_checkout",
     "Payment Attempted",
     "Payment Success",
 ]
@@ -493,12 +494,13 @@ def _stage_for_event_name(event_name: str) -> Optional[str]:
 
 
 def build_sankey_links_from_audit(clean_audit: pd.DataFrame) -> pd.DataFrame:
-    """Build a strict staged funnel Sankey from clean event-level audit rows.
+    """Build the requested branch-aware session funnel Sankey.
 
-    This intentionally does not connect users who skipped earlier stages into later
-    stages. Example: if a session has First Quote_Success but no Enquiry Attempted
-    in the selected date range, it is excluded from the strict Enquiry -> ... path.
-    This keeps the funnel non-increasing, so First Quote cannot exceed Enquiry.
+    Flow:
+    Enquiry Attempted -> Sign Up_total -> First Quote_Success -> Add to Cart_Success
+    -> Invoice Upload_Success OR Revised_offer_shown
+    -> Plan_selected if Revised_offer_shown happened
+    -> Initiate_checkout -> Payment Attempted -> Payment Success
     """
     if clean_audit.empty or "event_name" not in clean_audit.columns:
         return pd.DataFrame(columns=["source", "target", "value"])
@@ -509,8 +511,6 @@ def build_sankey_links_from_audit(clean_audit: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["source", "target", "value"])
 
-    # Use session_id for journey stitching where available, because Sankey is a
-    # session flow. Fall back to identity_key only when session_id is blank.
     if "session_id" in df.columns and "identity_key" in df.columns:
         session_vals = df["session_id"].fillna("").astype(str).str.strip()
         identity_vals = df["identity_key"].fillna("").astype(str).str.strip()
@@ -525,45 +525,76 @@ def build_sankey_links_from_audit(clean_audit: pd.DataFrame) -> pd.DataFrame:
     df["journey_key"] = df["journey_key"].replace("", "unknown")
 
     link_counts: dict[tuple[str, str], int] = {}
-    main_path_sets = [SANKEY_STAGE_EVENTS[stage] for stage in SANKEY_MAIN_PATH]
+    prefix = ["Enquiry Attempted", "Sign Up_total", "First Quote_Success", "Add to Cart_Success"]
+
+    def add(source: str, target: str) -> None:
+        link_counts[(source, target)] = link_counts.get((source, target), 0) + 1
 
     for _, g in df.groupby("journey_key", dropna=False):
         reached = set(g["stage"].dropna().astype(str).tolist())
 
-        # Strict cumulative funnel: a journey can enter stage N only if it has
-        # reached every previous stage in the main path.
-        current_prefix_ok = True
-        strict_reached: list[str] = []
-        for stage in SANKEY_MAIN_PATH:
-            if current_prefix_ok and stage in reached:
-                strict_reached.append(stage)
+        strict_prefix = []
+        for stage in prefix:
+            if stage in reached:
+                strict_prefix.append(stage)
             else:
-                current_prefix_ok = False
+                break
 
-        for source, target in zip(strict_reached, strict_reached[1:]):
-            link_counts[(source, target)] = link_counts.get((source, target), 0) + 1
+        for source, target in zip(strict_prefix, strict_prefix[1:]):
+            add(source, target)
 
-        # Terminal failure branches are also anchored to the deepest strict stage
-        # already reached, so they cannot inflate downstream nodes.
-        if strict_reached:
-            deepest = strict_reached[-1]
-            if "Invoice Upload_Failure" in reached and "Invoice Upload_Success" not in reached:
-                # Prefer to branch from Offer/Quote/Signup if the user reached those strictly.
-                branch_from = deepest
-                if branch_from in {"Payment Success", "Payment Attempted", "Add to Cart_Success", "Invoice Upload_Success"}:
-                    branch_from = "Offer_Selected" if "Offer_Selected" in strict_reached else deepest
-                link_counts[(branch_from, "Invoice Upload_Failure")] = link_counts.get((branch_from, "Invoice Upload_Failure"), 0) + 1
+        if len(strict_prefix) != len(prefix):
+            continue
 
-            if "Payment Failed" in reached and "Payment Success" not in reached:
-                branch_from = deepest
-                link_counts[(branch_from, "Payment Failed")] = link_counts.get((branch_from, "Payment Failed"), 0) + 1
+        branch_sources = []
+
+        if "Invoice Upload_Success" in reached:
+            add("Add to Cart_Success", "Invoice Upload_Success")
+            branch_sources.append("Invoice Upload_Success")
+
+        if "Revised_offer_shown" in reached:
+            add("Add to Cart_Success", "Revised_offer_shown")
+            if "Plan_selected" in reached:
+                add("Revised_offer_shown", "Plan_selected")
+                branch_sources.append("Plan_selected")
+            else:
+                branch_sources.append("Revised_offer_shown")
+
+        if not branch_sources:
+            continue
+
+        if "Initiate_checkout" in reached:
+            for source in branch_sources:
+                add(source, "Initiate_checkout")
+
+            if "Payment Attempted" in reached:
+                add("Initiate_checkout", "Payment Attempted")
+                if "Payment Success" in reached:
+                    add("Payment Attempted", "Payment Success")
+                elif "Payment Failed" in reached:
+                    add("Payment Attempted", "Payment Failed")
+            elif "Payment Failed" in reached:
+                add("Initiate_checkout", "Payment Failed")
 
     rows = [{"source": s, "target": t, "value": v} for (s, t), v in link_counts.items() if v > 0]
     if not rows:
         return pd.DataFrame(columns=["source", "target", "value"])
 
     out = pd.DataFrame(rows)
-    stage_order = {stage: i for i, stage in enumerate(SANKEY_MAIN_PATH + ["Invoice Upload_Failure", "Payment Failed"])}
+    stage_order_list = [
+        "Enquiry Attempted",
+        "Sign Up_total",
+        "First Quote_Success",
+        "Add to Cart_Success",
+        "Invoice Upload_Success",
+        "Revised_offer_shown",
+        "Plan_selected",
+        "Initiate_checkout",
+        "Payment Attempted",
+        "Payment Success",
+        "Payment Failed",
+    ]
+    stage_order = {stage: i for i, stage in enumerate(stage_order_list)}
     out["_sort"] = out["source"].map(stage_order).fillna(999)
     out = out.sort_values(["_sort", "source", "target"]).drop(columns=["_sort"]).reset_index(drop=True)
     return out
@@ -682,7 +713,7 @@ def render_daily_sankey(clean_audit: pd.DataFrame) -> None:
         ]
     )
     fig.update_layout(
-        title_text="Clean External funnel journey",
+        title_text="Clean External requested funnel journey",
         height=620,
         font=dict(size=13, color="#FFFFFF"),
         margin=dict(l=10, r=10, t=50, b=10),
@@ -849,7 +880,7 @@ def main() -> None:
 
             with daily_sankey_tab:
                 st.markdown("#### Funnel Sankey")
-                st.caption("Strict session-based funnel: later stages are counted only when the same session reached all earlier funnel stages in the selected date range. Node label text uses a bright color for readability.")
+                st.caption("Session-based requested funnel: Enquiry -> Sign Up -> First Quote -> Add to Cart -> Invoice Upload or Revised Offer -> Plan Selected -> Initiate Checkout -> Payment Attempted -> Payment Success. Node label text uses a bright color for readability.")
                 render_daily_sankey(clean_audit)
 
     with tab_totals:
