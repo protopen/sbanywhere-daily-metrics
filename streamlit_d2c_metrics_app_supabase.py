@@ -1949,7 +1949,7 @@ def _v2_dropdown_filter(label: str, options: list[str], default: list[str] | Non
     clean_options = list(dict.fromkeys(clean_options))
     default_values = default if default is not None else clean_options
 
-    st.markdown(f'<div class="v2-filter-label">{label}</div>', unsafe_allow_html=True)
+    st.markdown(f"**{label}**")
     return st.multiselect(
         label,
         clean_options,
@@ -1980,40 +1980,89 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     present_traffic_sources = sorted([x for x in events.get("Traffic Source", pd.Series(dtype=str)).dropna().unique().tolist() if x])
     combined_traffic_sources = list(dict.fromkeys(V2_TRAFFIC_SOURCE_OPTIONS + present_traffic_sources))
 
-    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
-    with c1:
-        selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix="v2_filter")
-    with c2:
-        selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix="v2_filter")
-    with c3:
-        selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix="v2_filter")
-    with c4:
-        selected_paid_sources = _v2_dropdown_filter("Paid Campaign Source", combined_paid_sources, default=combined_paid_sources, key_prefix="v2_filter")
-    with c5:
-        selected_traffic_sources = _v2_dropdown_filter("Traffic Source", combined_traffic_sources, default=combined_traffic_sources, key_prefix="v2_filter")
+    def apply_base_filters(key_suffix: str) -> pd.DataFrame:
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
+        with c2:
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
 
-    filtered = events.copy()
-    if selected_journey:
-        filtered = filtered[filtered["Journey Type"].isin(selected_journey)]
-    if selected_status:
-        filtered = filtered[filtered["Invoice Status"].isin(selected_status)]
+        filtered_local = events.copy()
+        if selected_journey:
+            filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
+        if selected_status:
+            filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
+        return filtered_local
 
-    filtered_tab2 = filtered.copy()
-    if selected_categories and "All" not in selected_categories:
-        filtered_tab2 = filtered_tab2[filtered_tab2["Product Category"].isin(selected_categories)]
+    def apply_category_filters(key_suffix: str) -> pd.DataFrame:
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c1:
+            selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
+        with c2:
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
+        with c3:
+            selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix=f"v2_{key_suffix}")
 
-    filtered_tab4 = filtered_tab2.copy()
-    if selected_paid_sources:
-        filtered_tab4 = filtered_tab4[filtered_tab4["Paid Campaign Source"].isin(selected_paid_sources)]
+        filtered_local = events.copy()
+        if selected_journey:
+            filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
+        if selected_status:
+            filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
+        if selected_categories and "All" not in selected_categories:
+            filtered_local = filtered_local[filtered_local["Product Category"].isin(selected_categories)]
+        return filtered_local
 
-    filtered_tab6 = filtered_tab2.copy()
-    if selected_traffic_sources:
-        filtered_tab6 = filtered_tab6[filtered_tab6["Traffic Source"].isin(selected_traffic_sources)]
+    def apply_paid_campaign_filters(key_suffix: str) -> pd.DataFrame:
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
+        with c1:
+            selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
+        with c2:
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
+        with c3:
+            selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix=f"v2_{key_suffix}")
+        with c4:
+            selected_paid_sources = _v2_dropdown_filter("Paid Campaign Source", combined_paid_sources, default=combined_paid_sources, key_prefix=f"v2_{key_suffix}")
 
-    tab1_view, tab2_view, tab3_view, tab4_view, tab5_view, tab6_view, tab7_view = st.tabs(["Daily Metrics", "Product Category Metrics", "Source Metrics", "Paid Campaign Metrics", "Category Metrics", "Detail View", "Order Event Detail"])
+        filtered_local = events.copy()
+        if selected_journey:
+            filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
+        if selected_status:
+            filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
+        if selected_categories and "All" not in selected_categories:
+            filtered_local = filtered_local[filtered_local["Product Category"].isin(selected_categories)]
+        if selected_paid_sources:
+            filtered_local = filtered_local[filtered_local["Paid Campaign Source"].isin(selected_paid_sources)]
+        return filtered_local
+
+    def apply_traffic_source_filters(key_suffix: str) -> pd.DataFrame:
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
+        with c1:
+            selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
+        with c2:
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
+        with c3:
+            selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix=f"v2_{key_suffix}")
+        with c4:
+            selected_traffic_sources = _v2_dropdown_filter("Traffic Source", combined_traffic_sources, default=combined_traffic_sources, key_prefix=f"v2_{key_suffix}")
+
+        filtered_local = events.copy()
+        if selected_journey:
+            filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
+        if selected_status:
+            filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
+        if selected_categories and "All" not in selected_categories:
+            filtered_local = filtered_local[filtered_local["Product Category"].isin(selected_categories)]
+        if selected_traffic_sources:
+            filtered_local = filtered_local[filtered_local["Traffic Source"].isin(selected_traffic_sources)]
+        return filtered_local
+
+    tab1_view, tab2_view, tab3_view, tab4_view, tab5_view, tab6_view, tab7_view = st.tabs(
+        ["Daily Metrics", "Product Category Metrics", "Source Metrics", "Paid Campaign Metrics", "Category Metrics", "Detail View", "Order Event Detail"]
+    )
 
     with tab1_view:
-        tab1 = _v2_build_daily_tab1(filtered)
+        filtered_tab1 = apply_base_filters("tab1")
+        tab1 = _v2_build_daily_tab1(filtered_tab1)
         st.dataframe(tab1, use_container_width=True, hide_index=True)
         st.download_button(
             "Download V2 Tab 1 CSV",
@@ -2023,6 +2072,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab2_view:
+        filtered_tab2 = apply_category_filters("tab2")
         tab2 = _v2_build_daily_tab2(filtered_tab2)
         st.dataframe(tab2, use_container_width=True, hide_index=True)
         st.download_button(
@@ -2033,7 +2083,8 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab3_view:
-        tab3 = _v2_build_source_tab3(filtered_tab2)
+        filtered_tab3 = apply_category_filters("tab3")
+        tab3 = _v2_build_source_tab3(filtered_tab3)
         st.dataframe(tab3, use_container_width=True, hide_index=True)
         st.download_button(
             "Download V2 Tab 3 CSV",
@@ -2043,6 +2094,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab4_view:
+        filtered_tab4 = apply_paid_campaign_filters("tab4")
         campaign_table, adset_table, ad_table = _v2_build_paid_campaign_tab4(filtered_tab4)
 
         st.markdown("###### 1. Campaign")
@@ -2073,7 +2125,8 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab5_view:
-        tab5 = _v2_build_category_tab5(filtered_tab2)
+        filtered_tab5 = apply_category_filters("tab5")
+        tab5 = _v2_build_category_tab5(filtered_tab5)
         st.dataframe(tab5, use_container_width=True, hide_index=True)
         st.download_button(
             "Download V2 Tab 5 CSV",
@@ -2083,6 +2136,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab6_view:
+        filtered_tab6 = apply_traffic_source_filters("tab6")
         tab6 = _v2_build_detail_tab6(filtered_tab6)
         st.dataframe(tab6, use_container_width=True, hide_index=True)
         st.download_button(
@@ -2093,7 +2147,8 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab7_view:
-        tab7 = _v2_build_order_event_tab7(filtered_tab4)
+        filtered_tab7 = apply_paid_campaign_filters("tab7")
+        tab7 = _v2_build_order_event_tab7(filtered_tab7)
         st.dataframe(tab7, use_container_width=True, hide_index=True)
         st.download_button(
             "Download V2 Tab 7 CSV",
@@ -2101,6 +2156,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
             file_name="v2_order_event_detail_tab7.csv",
             mime="text/csv",
         )
+
 
 
 def main() -> None:
@@ -2136,12 +2192,8 @@ def main() -> None:
                 object-fit: contain !important;
                 max-height: none !important;
             }
-            .v2-filter-label {
-                font-size: 0.78rem;
-                font-weight: 600;
-                margin-top: 0rem;
-                margin-bottom: 0.16rem;
-                color: rgba(250, 250, 250, 0.88);
+            .stMarkdown strong {
+                font-size: 0.80rem;
             }
             div[data-baseweb="select"] > div {
                 min-height: 2.35rem !important;

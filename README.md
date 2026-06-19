@@ -1,18 +1,12 @@
-# V2 clean tab names
+# V2 visible filter names fix
 
-Built on top of V2 filter label cleanup.
+Built on top of V2 conditional filters.
 
 Change:
-- Removed `Tab 1:`, `Tab 2:`, etc. prefixes from V2 tab labels.
-
-New tab labels:
-- Daily Metrics
-- Product Category Metrics
-- Source Metrics
-- Paid Campaign Metrics
-- Category Metrics
-- Detail View
-- Order Event Detail
+- Filter labels now render using Streamlit-native markdown above each dropdown.
+- This avoids the previous custom HTML/CSS label being hidden or not visible.
+- Dropdown placeholder remains generic `Select`.
+- Conditional per-tab filter rendering is preserved.
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py
