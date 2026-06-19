@@ -47,6 +47,7 @@ from d2c_clean_external_metrics_report import (
 
 APP_TITLE = "Surebright Anywhere Traffic & Campaign Insights"
 DEFAULT_START_DATE = date(2026, 5, 21)
+DEFAULT_V2_START_DATE = date(2026, 6, 18)
 DEFAULT_TIMEZONE = "Asia/Kolkata"
 DEFAULT_SUPABASE_TABLE = "d2c_raw_events"
 DEFAULT_SUPABASE_JSON_COLUMN = "raw"
@@ -740,6 +741,181 @@ def show_kpis(daily: pd.DataFrame) -> None:
         st.caption(f"Payment success rate: {payment_success / payment_attempted:.1%} based on clean external payment-attempt users.")
 
 
+
+
+# -----------------------------
+# V2 Dashboard
+# -----------------------------
+
+V2_EVENT_SEQUENCE = [
+    "enquiry_attempted",
+    "sign_up",
+    "initiate_checkout",
+    "payment_attempted",
+    "payment_success",
+    "payment_failure",
+]
+
+V2_DAILY_COLUMNS = [
+    "Date",
+    "Enquiry Attempted_Total",
+    "Sign Up_ Total",
+    "Initiate Checkout",
+    "Payment Success",
+    "Payment Failure",
+    "Gross GWP $",
+]
+
+
+def _v2_safe_json(raw_value):
+    if isinstance(raw_value, dict):
+        return raw_value
+    try:
+        return json.loads(str(raw_value or "{}"))
+    except Exception:
+        return {}
+
+
+def _v2_nested_get(obj: dict, *paths: str):
+    for path in paths:
+        cur = obj
+        ok = True
+        for part in path.split("."):
+            if isinstance(cur, dict) and part in cur:
+                cur = cur[part]
+            else:
+                ok = False
+                break
+        if ok:
+            return cur
+    return None
+
+
+def _v2_norm_value(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip().lower()
+    text = re.sub(r"[\s\-]+", "_", text)
+    return text
+
+
+def _v2_label(value: str) -> str:
+    value = _v2_norm_value(value)
+    if not value:
+        return "No Status"
+    mapping = {
+        "manual": "Manual",
+        "invoice_upload": "Invoice Upload",
+        "invoice_upload_success": "Invoice Upload Success",
+        "invoice_upload_failure": "Invoice Upload Failure",
+        "success": "Invoice Upload Success",
+        "failure": "Invoice Upload Failure",
+    }
+    return mapping.get(value, value.replace("_", " ").title())
+
+
+def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
+    if clean_audit is None or clean_audit.empty:
+        return pd.DataFrame(columns=["Date", "event_name", "flow_method", "flow_status", "gwp"])
+
+    rows = []
+    for _, row in clean_audit.iterrows():
+        obj = _v2_safe_json(row.get("raw_json", "{}"))
+        flow_method = _v2_nested_get(
+            obj,
+            "event_data.flow.method",
+            "data.flow.method",
+            "flow.method",
+        )
+        flow_status = _v2_nested_get(
+            obj,
+            "event_data.flow.status",
+            "data.flow.status",
+            "flow.status",
+        )
+        rows.append(
+            {
+                "Date": str(row.get("date", "") or ""),
+                "event_name": _v2_norm_value(row.get("event_name", "")),
+                "flow_method": _v2_norm_value(flow_method),
+                "flow_status": _v2_norm_value(flow_status),
+                "Journey Type": _v2_label(flow_method),
+                "Invoice Status": _v2_label(flow_status),
+                "gwp": float(row.get("gwp", 0) or 0),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _v2_build_daily_tab1(events: pd.DataFrame) -> pd.DataFrame:
+    if events is None or events.empty:
+        return pd.DataFrame(columns=V2_DAILY_COLUMNS)
+
+    df = events[events["event_name"].isin(V2_EVENT_SEQUENCE)].copy()
+    if df.empty:
+        return pd.DataFrame(columns=V2_DAILY_COLUMNS)
+
+    rows = []
+    for day, g in df.groupby("Date", dropna=False):
+        rows.append(
+            {
+                "Date": day,
+                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
+                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
+                "Initiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
+                "Payment Success": int((g["event_name"] == "payment_success").sum()),
+                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
+                "Gross GWP $": round(float(g.loc[g["event_name"] == "payment_success", "gwp"].sum()), 2),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return pd.DataFrame(columns=V2_DAILY_COLUMNS)
+    out = out.sort_values("Date", ascending=False).reset_index(drop=True)
+    return out[V2_DAILY_COLUMNS]
+
+
+def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
+    st.subheader("V2 Dashboard")
+    st.caption("V2 uses the new funnel logic and reads Journey Type / Invoice Status from `flow.method` and `flow.status` inside the JSON payload.")
+
+    events = _v2_clean_events_frame(clean_audit)
+
+    with st.expander("V2 filters", expanded=True):
+        c1, c2 = st.columns(2)
+
+        journey_options = ["Manual", "Invoice Upload"]
+        present_journey = sorted([x for x in events.get("Journey Type", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
+        combined_journey = list(dict.fromkeys(journey_options + present_journey))
+        selected_journey = c1.multiselect("Journey Type", combined_journey, default=combined_journey)
+
+        invoice_options = ["Invoice Upload Success", "Invoice Upload Failure"]
+        present_status = sorted([x for x in events.get("Invoice Status", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
+        combined_status = list(dict.fromkeys(invoice_options + present_status))
+        selected_status = c2.multiselect("Invoice Status", combined_status, default=combined_status)
+
+    filtered = events.copy()
+    if selected_journey:
+        filtered = filtered[filtered["Journey Type"].isin(selected_journey)]
+    if selected_status:
+        # Keep events with no invoice status only when no explicit invoice filter exists.
+        filtered = filtered[filtered["Invoice Status"].isin(selected_status)]
+
+    tab1 = _v2_build_daily_tab1(filtered)
+
+    st.markdown("### Tab 1: Daily Metrics")
+    st.dataframe(tab1, use_container_width=True, hide_index=True)
+
+    st.download_button(
+        "Download V2 Tab 1 CSV",
+        data=dataframe_to_csv_bytes(tab1),
+        file_name="v2_daily_metrics_tab1.csv",
+        mime="text/csv",
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="📊", layout="wide")
 
@@ -772,9 +948,18 @@ def main() -> None:
             page_size = st.number_input("Fetch page size", min_value=100, max_value=5000, value=int(page_size), step=100)
 
         st.divider()
+        st.header("Dashboard version")
+        dashboard_version = st.radio(
+            "Open dashboard",
+            ["V2: New Dashboard", "V1: Current Dashboard"],
+            index=0,
+        )
+
+        st.divider()
         st.header("Report settings")
         timezone_name = st.text_input("Timezone for date bucketing", value=DEFAULT_TIMEZONE)
-        start_date_value = st.date_input("Start date", value=DEFAULT_START_DATE)
+        default_start = DEFAULT_V2_START_DATE if dashboard_version.startswith("V2") else DEFAULT_START_DATE
+        start_date_value = st.date_input("Start date", value=default_start)
         use_end_date = st.checkbox("Use end date", value=False)
         end_date_value = st.date_input("End date", value=date.today()) if use_end_date else None
 
@@ -782,7 +967,7 @@ def main() -> None:
         st.caption("Clean External filter")
         st.markdown(
             "- Includes `surebrightanywhere.com` production traffic\n"
-            "- Excludes Abhishek, Santosh\n"
+            "- Excludes Abhishek, Santosh, Ankita, and soumyaramtri@gmail.com\n"
             "- Excludes `@surebright.com`, `@surerbright.com`, `@example.com`\n"
             "- Excludes localhost, Webflow, Amplify, and `_meta_test=1`"
         )
@@ -841,6 +1026,12 @@ def main() -> None:
     high_intent_invoice = result["high_intent_invoice"]
     high_intent_unique_dropoffs = result["high_intent_unique_dropoffs"]
     retailer = result["retailer"]
+
+    if dashboard_version.startswith("V2"):
+        render_v2_dashboard(clean_audit)
+        return
+
+    st.info("You are viewing V1: Current Dashboard. Use the sidebar to switch back to V2.")
 
     tab_daily, tab_totals, tab_attribution, tab_product, tab_sales, tab_high_intent, tab_retailer, tab_audit, tab_downloads = st.tabs(
         ["Daily Metrics", "Totals", "Attribution", "Product", "Sales", "High Intent", "Retailer", "Event Audit", "Downloads"]
