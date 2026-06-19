@@ -1,17 +1,18 @@
-# V2 dropdown checkbox-style filter update
+# V2 clean tab names
 
-Built on top of V2 Tab 7.
+Built on top of V2 filter label cleanup.
 
-Changes:
-- Reverted the always-open checkbox panels.
-- Filters are now compact placeholder-style dropdowns again.
-- Filter names remain visible above each dropdown.
-- The closed placeholder/dropdown height is fixed.
-- The opened dropdown menu keeps the checkbox-style multiselect behavior through Streamlit's native multiselect UI.
+Change:
+- Removed `Tab 1:`, `Tab 2:`, etc. prefixes from V2 tab labels.
 
-Preserved:
-- All V2 tabs 1 through 7.
-- V1 sidebar access.
+New tab labels:
+- Daily Metrics
+- Product Category Metrics
+- Source Metrics
+- Paid Campaign Metrics
+- Category Metrics
+- Detail View
+- Order Event Detail
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py

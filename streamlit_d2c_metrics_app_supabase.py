@@ -1955,7 +1955,7 @@ def _v2_dropdown_filter(label: str, options: list[str], default: list[str] | Non
         clean_options,
         default=default_values,
         label_visibility="collapsed",
-        placeholder=label,
+        placeholder="Select",
         key=f"{key_prefix}_{label}",
     )
 
@@ -1980,7 +1980,6 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     present_traffic_sources = sorted([x for x in events.get("Traffic Source", pd.Series(dtype=str)).dropna().unique().tolist() if x])
     combined_traffic_sources = list(dict.fromkeys(V2_TRAFFIC_SOURCE_OPTIONS + present_traffic_sources))
 
-    st.markdown("##### Filters")
     c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
     with c1:
         selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix="v2_filter")
@@ -2011,7 +2010,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     if selected_traffic_sources:
         filtered_tab6 = filtered_tab6[filtered_tab6["Traffic Source"].isin(selected_traffic_sources)]
 
-    tab1_view, tab2_view, tab3_view, tab4_view, tab5_view, tab6_view, tab7_view = st.tabs(["Tab 1: Daily Metrics", "Tab 2: Product Category Metrics", "Tab 3: Source Metrics", "Tab 4: Paid Campaign Metrics", "Tab 5: Category Metrics", "Tab 6: Detail View", "Tab 7: Order Event Detail"])
+    tab1_view, tab2_view, tab3_view, tab4_view, tab5_view, tab6_view, tab7_view = st.tabs(["Daily Metrics", "Product Category Metrics", "Source Metrics", "Paid Campaign Metrics", "Category Metrics", "Detail View", "Order Event Detail"])
 
     with tab1_view:
         tab1 = _v2_build_daily_tab1(filtered)
@@ -2140,6 +2139,7 @@ def main() -> None:
             .v2-filter-label {
                 font-size: 0.78rem;
                 font-weight: 600;
+                margin-top: 0rem;
                 margin-bottom: 0.16rem;
                 color: rgba(250, 250, 250, 0.88);
             }
