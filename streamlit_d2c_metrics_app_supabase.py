@@ -878,23 +878,21 @@ def _v2_build_daily_tab1(events: pd.DataFrame) -> pd.DataFrame:
 
 
 def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
-    st.subheader("V2 Dashboard")
-    st.caption("V2 uses the new funnel logic and reads Journey Type / Invoice Status from `flow.method` and `flow.status` inside the JSON payload.")
-
     events = _v2_clean_events_frame(clean_audit)
 
-    with st.expander("V2 filters", expanded=True):
-        c1, c2 = st.columns(2)
+    journey_options = ["Manual", "Invoice Upload"]
+    present_journey = sorted([x for x in events.get("Journey Type", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
+    combined_journey = list(dict.fromkeys(journey_options + present_journey))
 
-        journey_options = ["Manual", "Invoice Upload"]
-        present_journey = sorted([x for x in events.get("Journey Type", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
-        combined_journey = list(dict.fromkeys(journey_options + present_journey))
-        selected_journey = c1.multiselect("Journey Type", combined_journey, default=combined_journey)
+    invoice_options = ["Invoice Upload Success", "Invoice Upload Failure"]
+    present_status = sorted([x for x in events.get("Invoice Status", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
+    combined_status = list(dict.fromkeys(invoice_options + present_status))
 
-        invoice_options = ["Invoice Upload Success", "Invoice Upload Failure"]
-        present_status = sorted([x for x in events.get("Invoice Status", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
-        combined_status = list(dict.fromkeys(invoice_options + present_status))
-        selected_status = c2.multiselect("Invoice Status", combined_status, default=combined_status)
+    st.markdown("##### Filters")
+    c1, c2, c3 = st.columns([1.2, 1.2, 3.0])
+    selected_journey = c1.multiselect("Journey Type", combined_journey, default=combined_journey, label_visibility="collapsed", placeholder="Journey Type")
+    selected_status = c2.multiselect("Invoice Status", combined_status, default=combined_status, label_visibility="collapsed", placeholder="Invoice Status")
+    c3.caption("Journey Type = flow.method • Invoice Status = flow.status")
 
     filtered = events.copy()
     if selected_journey:
@@ -905,7 +903,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
 
     tab1 = _v2_build_daily_tab1(filtered)
 
-    st.markdown("### Tab 1: Daily Metrics")
+    st.markdown("##### Tab 1: Daily Metrics")
     st.dataframe(tab1, use_container_width=True, hide_index=True)
 
     st.download_button(
@@ -918,14 +916,45 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
 
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="📊", layout="wide")
+    st.markdown(
+        """
+        <style>
+            .block-container {
+                padding-top: 1.0rem;
+                padding-bottom: 1.0rem;
+            }
+            [data-testid="stSidebar"] .block-container {
+                padding-top: 0.75rem;
+            }
+            div[data-testid="stVerticalBlock"] {
+                gap: 0.45rem;
+            }
+            h1 {
+                margin-top: 0rem;
+                margin-bottom: 0.35rem;
+            }
+            h2, h3 {
+                margin-top: 0.45rem;
+                margin-bottom: 0.35rem;
+            }
+            .stMarkdown p {
+                margin-bottom: 0.35rem;
+            }
+            div[data-testid="stDataFrame"] {
+                margin-top: 0.25rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     logo_path = get_logo_path()
     if logo_path is not None:
-        st.image(str(logo_path), width=360)
-    st.title(APP_TITLE)
+        st.image(str(logo_path), width=240)
+    st.markdown(f"### {APP_TITLE}")
 
     with st.sidebar:
-        st.header("Supabase connection")
+        st.markdown("#### Supabase")
 
         supabase_url = get_secret_value("supabase", "url")
         supabase_key = get_secret_value("supabase", "key")
@@ -948,15 +977,16 @@ def main() -> None:
             page_size = st.number_input("Fetch page size", min_value=100, max_value=5000, value=int(page_size), step=100)
 
         st.divider()
-        st.header("Dashboard version")
+        st.markdown("#### Dashboard")
         dashboard_version = st.radio(
             "Open dashboard",
             ["V2: New Dashboard", "V1: Current Dashboard"],
             index=0,
+            horizontal=True,
         )
 
         st.divider()
-        st.header("Report settings")
+        st.markdown("#### Report settings")
         timezone_name = st.text_input("Timezone for date bucketing", value=DEFAULT_TIMEZONE)
         default_start = DEFAULT_V2_START_DATE if dashboard_version.startswith("V2") else DEFAULT_START_DATE
         start_date_value = st.date_input("Start date", value=default_start)
