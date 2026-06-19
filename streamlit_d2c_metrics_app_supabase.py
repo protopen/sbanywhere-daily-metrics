@@ -1944,26 +1944,20 @@ def _v2_build_order_event_tab7(events: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def _v2_checkbox_filter(label: str, options: list[str], default: list[str] | None = None, key_prefix: str = "") -> list[str]:
+def _v2_dropdown_filter(label: str, options: list[str], default: list[str] | None = None, key_prefix: str = "") -> list[str]:
     clean_options = [str(x) for x in options if str(x).strip()]
     clean_options = list(dict.fromkeys(clean_options))
-    default_set = set(default if default is not None else clean_options)
+    default_values = default if default is not None else clean_options
 
     st.markdown(f'<div class="v2-filter-label">{label}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="v2-filter-box">', unsafe_allow_html=True)
-
-    selected = []
-    for option in clean_options:
-        checked = st.checkbox(
-            option,
-            value=option in default_set,
-            key=f"{key_prefix}_{label}_{option}",
-        )
-        if checked:
-            selected.append(option)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    return selected
+    return st.multiselect(
+        label,
+        clean_options,
+        default=default_values,
+        label_visibility="collapsed",
+        placeholder=label,
+        key=f"{key_prefix}_{label}",
+    )
 
 
 def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
@@ -1989,15 +1983,15 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     st.markdown("##### Filters")
     c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
     with c1:
-        selected_journey = _v2_checkbox_filter("Journey Type", combined_journey, default=combined_journey, key_prefix="v2_filter")
+        selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix="v2_filter")
     with c2:
-        selected_status = _v2_checkbox_filter("Invoice Status", combined_status, default=combined_status, key_prefix="v2_filter")
+        selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix="v2_filter")
     with c3:
-        selected_categories = _v2_checkbox_filter("Product Category", combined_categories, default=["All"], key_prefix="v2_filter")
+        selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix="v2_filter")
     with c4:
-        selected_paid_sources = _v2_checkbox_filter("Paid Campaign Source", combined_paid_sources, default=combined_paid_sources, key_prefix="v2_filter")
+        selected_paid_sources = _v2_dropdown_filter("Paid Campaign Source", combined_paid_sources, default=combined_paid_sources, key_prefix="v2_filter")
     with c5:
-        selected_traffic_sources = _v2_checkbox_filter("Traffic Source", combined_traffic_sources, default=combined_traffic_sources, key_prefix="v2_filter")
+        selected_traffic_sources = _v2_dropdown_filter("Traffic Source", combined_traffic_sources, default=combined_traffic_sources, key_prefix="v2_filter")
 
     filtered = events.copy()
     if selected_journey:
@@ -2146,28 +2140,17 @@ def main() -> None:
             .v2-filter-label {
                 font-size: 0.78rem;
                 font-weight: 600;
-                margin-bottom: 0.18rem;
+                margin-bottom: 0.16rem;
                 color: rgba(250, 250, 250, 0.88);
             }
-            .v2-filter-box {
-                border: 1px solid rgba(128, 128, 128, 0.30);
-                border-radius: 0.45rem;
-                padding: 0.42rem 0.55rem 0.28rem 0.55rem;
-                min-height: 2.55rem;
-                max-height: 8.25rem;
-                overflow-y: auto;
-                background: rgba(128, 128, 128, 0.05);
+            div[data-baseweb="select"] > div {
+                min-height: 2.35rem !important;
+                max-height: 2.35rem !important;
+                overflow: hidden !important;
             }
-            .v2-filter-box [data-testid="stVerticalBlock"] {
-                gap: 0.08rem;
-            }
-            .v2-filter-box label {
-                min-height: 1.15rem;
-                margin-bottom: 0rem;
-            }
-            .v2-filter-box p {
-                margin-bottom: 0rem;
-                font-size: 0.78rem;
+            div[data-baseweb="popover"] {
+                max-height: 16rem !important;
+                overflow-y: auto !important;
             }
         </style>
         """,
