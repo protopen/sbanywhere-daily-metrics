@@ -1,20 +1,12 @@
-# V2 logo spacing fix
+# V2 top navbar logo build
 
-Built on top of V2 start date hard-coded build.
+Built on top of V2 logo spacing fix.
 
 Changes:
-- Increased top padding so the logo is not clipped.
-- Added safe image CSS so the logo uses full height and does not get cut.
-- Added a little spacing below the logo.
-- Moved the page content slightly lower vertically.
-
-Preserved:
-- V2 start date default/hard-code: 18 June 2026
-- Conditional per-tab filters
-- Visible filter names above dropdowns
-- Clean tab names
-- All V2 tabs 1 through 7
-- V1 sidebar access
+- Moved the Surebright logo into a fixed top navbar.
+- Removed the separate body logo to avoid duplicate/clipped rendering.
+- Added top page padding so content sits below the navbar.
+- Preserved all V2 logic, conditional filters, visible filter names, clean tab names, and V1 sidebar access.
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py

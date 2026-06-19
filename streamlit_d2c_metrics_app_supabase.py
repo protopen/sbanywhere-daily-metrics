@@ -1960,6 +1960,26 @@ def _v2_dropdown_filter(label: str, options: list[str], default: list[str] | Non
     )
 
 
+
+
+def render_top_navbar() -> None:
+    logo_path = Path("surebright_logo_homepage.webp")
+    if not logo_path.exists():
+        logo_path = Path("/mnt/data/surebright_logo_homepage.webp")
+
+    if logo_path.exists():
+        logo_data = base64.b64encode(logo_path.read_bytes()).decode("utf-8")
+        logo_src = f"data:image/webp;base64,{logo_data}"
+        st.markdown(
+            f"""
+            <div class="surebright-top-navbar">
+                <img src="{logo_src}" alt="Surebright" />
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     events = _v2_clean_events_frame(clean_audit)
 
@@ -2160,13 +2180,36 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
 
 
 def main() -> None:
+    render_top_navbar()
     st.set_page_config(page_title=APP_TITLE, page_icon="📊", layout="wide")
     st.markdown(
         """
         <style>
             .block-container {
-                padding-top: 1.35rem;
+                padding-top: 4.65rem;
                 padding-bottom: 0.85rem;
+            }
+            .surebright-top-navbar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3.75rem;
+                z-index: 999999;
+                display: flex;
+                align-items: center;
+                padding: 0.48rem 1.55rem;
+                background: rgb(14, 17, 23);
+                border-bottom: 1px solid rgba(128, 128, 128, 0.22);
+                box-shadow: 0 1px 10px rgba(0, 0, 0, 0.18);
+            }
+            .surebright-top-navbar img {
+                height: 2.45rem !important;
+                width: auto !important;
+                max-height: 2.45rem !important;
+                object-fit: contain !important;
+                display: block !important;
+                margin: 0 !important;
             }
             [data-testid="stSidebar"] .block-container {
                 padding-top: 0.75rem;
@@ -2191,10 +2234,6 @@ def main() -> None:
             img {
                 object-fit: contain !important;
                 max-height: none !important;
-                height: auto !important;
-                display: block !important;
-                margin-top: 0.35rem !important;
-                margin-bottom: 0.55rem !important;
             }
             .stMarkdown strong {
                 font-size: 0.80rem;
