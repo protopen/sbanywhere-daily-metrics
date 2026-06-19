@@ -889,10 +889,9 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     combined_status = list(dict.fromkeys(invoice_options + present_status))
 
     st.markdown("##### Filters")
-    c1, c2, c3 = st.columns([1.2, 1.2, 3.0])
+    c1, c2 = st.columns([1, 1])
     selected_journey = c1.multiselect("Journey Type", combined_journey, default=combined_journey, label_visibility="collapsed", placeholder="Journey Type")
     selected_status = c2.multiselect("Invoice Status", combined_status, default=combined_status, label_visibility="collapsed", placeholder="Invoice Status")
-    c3.caption("Journey Type = flow.method • Invoice Status = flow.status")
 
     filtered = events.copy()
     if selected_journey:
@@ -943,6 +942,10 @@ def main() -> None:
             div[data-testid="stDataFrame"] {
                 margin-top: 0.25rem;
             }
+            img {
+                object-fit: contain !important;
+                max-height: none !important;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -950,7 +953,7 @@ def main() -> None:
 
     logo_path = get_logo_path()
     if logo_path is not None:
-        st.image(str(logo_path), width=240)
+        st.image(str(logo_path), width=190)
     st.markdown(f"### {APP_TITLE}")
 
     with st.sidebar:
