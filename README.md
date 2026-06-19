@@ -1,12 +1,17 @@
-# V2 visible filter names fix
+# V2 start date hard-coded
 
-Built on top of V2 conditional filters.
+Built on top of V2 filter names visible build.
 
 Change:
-- Filter labels now render using Streamlit-native markdown above each dropdown.
-- This avoids the previous custom HTML/CSS label being hidden or not visible.
-- Dropdown placeholder remains generic `Select`.
-- Conditional per-tab filter rendering is preserved.
+- V2 start date is hard-coded/defaulted to 18 June 2026.
+
+Preserved:
+- V2 opens by default.
+- V1 remains accessible from the sidebar.
+- Conditional per-tab filters.
+- Visible filter names above dropdowns.
+- Clean tab names.
+- All V2 tabs 1 through 7.
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py
