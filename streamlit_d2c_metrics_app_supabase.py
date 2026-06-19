@@ -2165,8 +2165,8 @@ def main() -> None:
         """
         <style>
             .block-container {
-                padding-top: 1.0rem;
-                padding-bottom: 1.0rem;
+                padding-top: 1.35rem;
+                padding-bottom: 0.85rem;
             }
             [data-testid="stSidebar"] .block-container {
                 padding-top: 0.75rem;
@@ -2191,6 +2191,10 @@ def main() -> None:
             img {
                 object-fit: contain !important;
                 max-height: none !important;
+                height: auto !important;
+                display: block !important;
+                margin-top: 0.35rem !important;
+                margin-bottom: 0.55rem !important;
             }
             .stMarkdown strong {
                 font-size: 0.80rem;
@@ -2212,6 +2216,7 @@ def main() -> None:
     logo_path = get_logo_path()
     if logo_path is not None:
         st.image(str(logo_path), width=190)
+        st.markdown("<div style=\"height: 0.35rem;\"></div>", unsafe_allow_html=True)
     st.markdown(f"### {APP_TITLE}")
 
     with st.sidebar:
