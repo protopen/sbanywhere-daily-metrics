@@ -2165,7 +2165,7 @@ def main() -> None:
         """
         <style>
             .block-container {
-                padding-top: 1.35rem;
+                padding-top: 3.10rem;
                 padding-bottom: 0.85rem;
             }
             [data-testid="stSidebar"] .block-container {
@@ -2193,8 +2193,8 @@ def main() -> None:
                 max-height: none !important;
                 height: auto !important;
                 display: block !important;
-                margin-top: 0.35rem !important;
-                margin-bottom: 0.55rem !important;
+                margin-top: 1.10rem !important;
+                margin-bottom: 0.65rem !important;
             }
             .stMarkdown strong {
                 font-size: 0.80rem;

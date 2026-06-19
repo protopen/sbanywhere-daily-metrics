@@ -1,16 +1,19 @@
-# V2 reverted top-navbar logo change
+# V2 logo lowered
 
-This reverts the last change that moved the logo into a fixed top navbar.
+Built on top of reverted top-navbar logo build.
 
-Restored state:
-- Logo is back in the regular page body.
-- Previous logo spacing/clipping fix is preserved.
-- V2 start date remains 18 June 2026.
-- Conditional per-tab filters remain preserved.
-- Visible filter names above dropdowns remain preserved.
-- Clean tab names remain preserved.
-- All V2 tabs 1 through 7 remain preserved.
-- V1 sidebar access remains preserved.
+Changes:
+- Increased page top padding so the logo sits below the Streamlit top navbar.
+- Added extra logo top margin to prevent clipping.
+- Preserved regular in-page logo placement, without fixed custom navbar.
+
+Preserved:
+- V2 start date default/hard-code: 18 June 2026
+- Conditional per-tab filters
+- Visible filter names above dropdowns
+- Clean tab names
+- All V2 tabs 1 through 7
+- V1 sidebar access
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py
