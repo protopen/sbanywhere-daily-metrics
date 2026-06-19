@@ -749,6 +749,7 @@ def show_kpis(daily: pd.DataFrame) -> None:
 
 V2_EVENT_SEQUENCE = [
     "enquiry_attempted",
+    "enquiry_success",
     "sign_up",
     "initiate_checkout",
     "payment_attempted",
@@ -764,6 +765,151 @@ V2_DAILY_COLUMNS = [
     "Payment Success",
     "Payment Failure",
     "Gross GWP $",
+]
+
+V2_TAB2_COLUMNS = [
+    "Date",
+    "Enquiry Attempted",
+    "Enquiry Success",
+    "Sign Up_ Total",
+    "Innitiate Checkout_User Count",
+    "Innitiate Checkout_Product Count",
+    "Innitiate Checkout_Cart Value",
+    "Payment Success_ User Count",
+    "Payment Failure_ User Count",
+    "Payment Success_ Product Count",
+    "Gross GWP $",
+]
+
+V2_TAB3_SOURCES = [
+    "Meta",
+    "Google",
+    "Tiktok",
+    "Direct",
+    "Referral (surebright.com)",
+    "Referral (Others)",
+    "Organic",
+    "Others",
+]
+
+V2_TAB3_COLUMNS = [
+    "Source",
+    "Traffic (Total)",
+    "Enquiry Attempted_Total",
+    "Sign Up_ Total",
+    "Innitiate Checkout",
+    "Payment Success",
+    "Payment Failure",
+    "Gross GWP $",
+]
+
+V2_PAID_SOURCE_OPTIONS = [
+    "Meta",
+    "Google",
+    "Tiktok",
+    "Influencers",
+    "Others",
+]
+
+V2_TAB4_CAMPAIGN_COLUMNS = [
+    "Campaign Name",
+    "Traffic (Total)",
+    "Enquiry Attempted_Total",
+    "Sign Up_ Total",
+    "Innitiate Checkout",
+    "Payment Success",
+    "Payment Failure",
+    "Gross GWP $",
+]
+
+V2_TAB4_ADSET_COLUMNS = [
+    "Campaign Name",
+    "Adset Name",
+    "Traffic (Total)",
+    "Enquiry Attempted_Total",
+    "Sign Up_ Total",
+    "Innitiate Checkout",
+    "Payment Success",
+    "Payment Failure",
+    "Gross GWP $",
+]
+
+V2_TAB4_AD_COLUMNS = [
+    "Campaign Name",
+    "Adset Name",
+    "Ad Name",
+    "Traffic (Total)",
+    "Enquiry Attempted_Total",
+    "Sign Up_ Total",
+    "Innitiate Checkout",
+    "Payment Success",
+    "Payment Failure",
+    "Gross GWP $",
+]
+
+V2_TAB5_COLUMNS = [
+    "Category",
+    "Enquiry Attempted_Total",
+    "Sign Up_ Total",
+    "Innitiate Checkout",
+    "Payment Success",
+    "Payment Failure",
+    "Gross GWP $",
+]
+
+V2_TRAFFIC_SOURCE_OPTIONS = [
+    "Meta",
+    "Google",
+    "Tiktok",
+    "Direct",
+    "Referral (surebright.com)",
+    "Referral (Others)",
+    "Organic",
+    "Others",
+]
+
+V2_TAB6_COLUMNS = [
+    "Date",
+    "Name",
+    "Email",
+    "Last Event",
+    "Product Sub Category",
+    "Price",
+    "Waranty Type",
+    "Warranty Tenure",
+    "Plan Price",
+    "UTM Campaign Name",
+    "UTM Adset Name",
+    "UTM Ad Name",
+]
+
+V2_TAB7_COLUMNS = [
+    "Date",
+    "Name",
+    "Email",
+    "Journey Flow",
+    "Event",
+    "Order / Payment ID",
+    "Product Category",
+    "Product Title",
+    "Product Brand",
+    "Manufacturer",
+    "Model Number",
+    "Product Condition",
+    "Quantity",
+    "Product Unit Price",
+    "Product Total Price",
+    "Warranty Type",
+    "Warranty / Plan Name",
+    "Warranty Price",
+    "Warranty Term Months",
+    "Warranty Provider",
+    "Manufacturer Warranty",
+    "Eligible",
+    "Gross GWP $",
+    "UTM Source",
+    "UTM Medium",
+    "UTM Campaign",
 ]
 
 
@@ -814,9 +960,665 @@ def _v2_label(value: str) -> str:
     return mapping.get(value, value.replace("_", " ").title())
 
 
+def _v2_parse_money(value) -> float:
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except Exception:
+            return 0.0
+    text = str(value)
+    text = re.sub(r"[^0-9.\-]", "", text)
+    if text in ("", ".", "-", "-."):
+        return 0.0
+    try:
+        return float(text)
+    except Exception:
+        return 0.0
+
+
+def _v2_collect_line_items(obj: dict) -> list[dict]:
+    candidates = [
+        _v2_nested_get(obj, "event_data.line_items"),
+        _v2_nested_get(obj, "event_data.items"),
+        _v2_nested_get(obj, "data.line_items"),
+        _v2_nested_get(obj, "data.items"),
+        _v2_nested_get(obj, "line_items"),
+        _v2_nested_get(obj, "items"),
+        _v2_nested_get(obj, "raw.line_items"),
+        _v2_nested_get(obj, "raw.items"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, list):
+            return [x for x in candidate if isinstance(x, dict)]
+    return []
+
+
+def _v2_item_quantity(item: dict) -> int:
+    qty = _v2_nested_get(item, "quantity", "qty", "purchase.quantity")
+    try:
+        qty_int = int(float(qty))
+        return qty_int if qty_int > 0 else 1
+    except Exception:
+        return 1
+
+
+def _v2_item_total_value(item: dict) -> float:
+    direct = _v2_nested_get(item, "purchase.total_price", "total_price", "item_total", "line_total", "amount")
+    direct_val = _v2_parse_money(direct)
+    if direct_val:
+        return direct_val
+
+    unit = _v2_parse_money(_v2_nested_get(item, "purchase.unit_price", "unit_price", "price", "product.price"))
+    return unit * _v2_item_quantity(item)
+
+
+def _v2_product_category_from_obj(obj: dict) -> str:
+    line_items = _v2_collect_line_items(obj)
+    for item in line_items:
+        product = item.get("product") if isinstance(item.get("product"), dict) else {}
+        category = product.get("category") if isinstance(product.get("category"), dict) else None
+        value = (
+            (category or {}).get("name") if isinstance(category, dict) else None
+        ) or product.get("category") or item.get("item_category") or item.get("category")
+        if value not in (None, ""):
+            return str(value).strip()
+
+    value = _v2_nested_get(
+        obj,
+        "event_data.form.fields.product_category",
+        "event_data.form.fields.category",
+        "event_data.product.category.name",
+        "event_data.product.category",
+        "data.categoryName",
+        "data.sbCategoryName",
+        "data.product.category.name",
+        "data.product.category",
+        "raw.product_category",
+        "raw.category",
+        "product.category.name",
+        "product.category",
+    )
+    return str(value).strip() if value not in (None, "") else "Unknown"
+
+
+def _v2_product_count_from_obj(obj: dict, fallback=0) -> int:
+    line_items = _v2_collect_line_items(obj)
+    if line_items:
+        return int(sum(_v2_item_quantity(item) for item in line_items))
+    try:
+        val = int(float(fallback or 0))
+        return val if val > 0 else 1
+    except Exception:
+        return 1
+
+
+def _v2_cart_value_from_obj(obj: dict, fallback=0) -> float:
+    line_items = _v2_collect_line_items(obj)
+    if line_items:
+        return float(sum(_v2_item_total_value(item) for item in line_items))
+    return _v2_parse_money(fallback)
+
+
+def _v2_url_domain(value) -> str:
+    if value in (None, ""):
+        return ""
+    text = str(value).strip().lower()
+    try:
+        parsed = urlparse(text if "://" in text else f"https://{text}")
+        return parsed.netloc.lower().replace("www.", "")
+    except Exception:
+        return ""
+
+
+def _v2_url_query_value(value: str, key: str) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = urlparse(str(value))
+        qs = parse_qs(parsed.query)
+        vals = qs.get(key) or []
+        return str(vals[0]).strip().lower() if vals else ""
+    except Exception:
+        return ""
+
+
+def _v2_source_bucket(obj: dict) -> str:
+    utm_source = str(
+        _v2_nested_get(
+            obj,
+            "event_data.utm.source",
+            "event_data.utm_source",
+            "utm.source",
+            "utm_source",
+            "data.utm.source",
+            "data.utm_source",
+            "raw.utm_source",
+        )
+        or ""
+    ).strip().lower()
+
+    utm_medium = str(
+        _v2_nested_get(
+            obj,
+            "event_data.utm.medium",
+            "event_data.utm_medium",
+            "utm.medium",
+            "utm_medium",
+            "data.utm.medium",
+            "data.utm_medium",
+            "raw.utm_medium",
+        )
+        or ""
+    ).strip().lower()
+
+    page_url = str(
+        _v2_nested_get(
+            obj,
+            "source.page_url",
+            "source.url",
+            "page_url",
+            "url",
+            "context.page.url",
+            "event_data.page_url",
+        )
+        or ""
+    )
+
+    referrer = str(
+        _v2_nested_get(
+            obj,
+            "source.referrer",
+            "source.referrer_url",
+            "referrer",
+            "referer",
+            "context.page.referrer",
+            "event_data.referrer",
+            "event_data.referrer_url",
+        )
+        or ""
+    )
+
+    ref_domain = _v2_url_domain(referrer)
+    page_has_gclid = bool(_v2_url_query_value(page_url, "gclid"))
+    page_has_fbclid = bool(_v2_url_query_value(page_url, "fbclid"))
+    page_has_ttclid = bool(_v2_url_query_value(page_url, "ttclid"))
+
+    source_text = f"{utm_source} {utm_medium} {ref_domain}".lower()
+
+    if any(token in source_text for token in ["facebook", "instagram", "meta", "fb", "ig"]) or page_has_fbclid:
+        return "Meta"
+    if "google" in source_text or page_has_gclid:
+        return "Google"
+    if "tiktok" in source_text or page_has_ttclid:
+        return "Tiktok"
+
+    search_domains = ("google.", "bing.", "yahoo.", "duckduckgo.", "ecosia.", "baidu.", "yandex.")
+    if "organic" in utm_medium or any(domain in ref_domain for domain in search_domains):
+        return "Organic"
+
+    if ref_domain:
+        if ref_domain == "surebright.com" or ref_domain.endswith(".surebright.com"):
+            return "Referral (surebright.com)"
+        if "surebrightanywhere.com" not in ref_domain:
+            return "Referral (Others)"
+
+    if not utm_source and not ref_domain:
+        return "Direct"
+
+    return "Others"
+
+
+
+def _v2_attr_value(obj: dict, *paths: str) -> str:
+    for path in paths:
+        value = _v2_nested_get(obj, path)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _v2_url_param_from_obj(obj: dict, key: str) -> str:
+    page_url = str(
+        _v2_nested_get(
+            obj,
+            "source.page_url",
+            "source.url",
+            "page_url",
+            "url",
+            "context.page.url",
+            "event_data.page_url",
+        )
+        or ""
+    )
+    return _v2_url_query_value(page_url, key)
+
+
+def _v2_campaign_values(obj: dict) -> dict:
+    campaign = _v2_attr_value(
+        obj,
+        "event_data.utm.campaign",
+        "event_data.utm_campaign",
+        "utm.campaign",
+        "utm_campaign",
+        "data.utm.campaign",
+        "data.utm_campaign",
+        "raw.utm_campaign",
+    ) or _v2_url_param_from_obj(obj, "utm_campaign") or "Unknown"
+
+    adset = _v2_attr_value(
+        obj,
+        "event_data.utm.adset",
+        "event_data.utm.ad_set",
+        "event_data.utm_adset",
+        "event_data.utm_ad_set",
+        "event_data.adset_name",
+        "event_data.ad_set_name",
+        "utm.adset",
+        "utm.ad_set",
+        "utm_adset",
+        "utm_ad_set",
+        "adset_name",
+        "ad_set_name",
+        "data.utm.adset",
+        "data.utm.ad_set",
+        "data.adset_name",
+        "data.ad_set_name",
+        "raw.utm_adset",
+        "raw.utm_ad_set",
+    ) or _v2_url_param_from_obj(obj, "utm_adset") or _v2_url_param_from_obj(obj, "utm_ad_set") or "Unknown"
+
+    ad = _v2_attr_value(
+        obj,
+        "event_data.utm.ad",
+        "event_data.utm_ad",
+        "event_data.ad_name",
+        "utm.ad",
+        "utm_ad",
+        "ad_name",
+        "data.utm.ad",
+        "data.ad_name",
+        "raw.utm_ad",
+    ) or _v2_url_param_from_obj(obj, "utm_ad") or "Unknown"
+
+    return {
+        "Campaign Name": campaign,
+        "Adset Name": adset,
+        "Ad Name": ad,
+    }
+
+
+
+def _v2_detail_value(obj: dict, *paths: str) -> str:
+    for path in paths:
+        value = _v2_nested_get(obj, path)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _v2_name_from_obj(obj: dict) -> str:
+    direct = _v2_detail_value(
+        obj,
+        "event_data.form.fields.name",
+        "event_data.form.fields.full_name",
+        "event_data.form.fields.fullName",
+        "event_data.customer.name",
+        "event_data.user.name",
+        "actor.name",
+        "customer.name",
+        "user.name",
+        "data.name",
+        "data.full_name",
+        "name",
+    )
+    if direct:
+        return direct
+
+    first = _v2_detail_value(
+        obj,
+        "event_data.form.fields.first_name",
+        "event_data.form.fields.firstname",
+        "actor.first_name",
+        "customer.first_name",
+        "data.first_name",
+    )
+    last = _v2_detail_value(
+        obj,
+        "event_data.form.fields.last_name",
+        "event_data.form.fields.lastname",
+        "actor.last_name",
+        "customer.last_name",
+        "data.last_name",
+    )
+    return " ".join([x for x in [first, last] if x]).strip()
+
+
+def _v2_email_from_obj(obj: dict) -> str:
+    return _v2_detail_value(
+        obj,
+        "event_data.form.fields.email",
+        "event_data.form.fields.email_address",
+        "event_data.customer.email",
+        "event_data.user.email",
+        "actor.email",
+        "customer.email",
+        "user.email",
+        "data.email",
+        "email",
+    ).lower()
+
+
+def _v2_product_detail_values(obj: dict) -> dict:
+    line_items = _v2_collect_line_items(obj)
+    first_item = line_items[0] if line_items else {}
+    product = first_item.get("product") if isinstance(first_item.get("product"), dict) else {}
+    purchase = first_item.get("purchase") if isinstance(first_item.get("purchase"), dict) else {}
+    protection = first_item.get("protection") if isinstance(first_item.get("protection"), dict) else {}
+
+    category_obj = product.get("category") if isinstance(product.get("category"), dict) else {}
+    subcategory = (
+        _v2_detail_value(
+            obj,
+            "event_data.form.fields.product_sub_category",
+            "event_data.form.fields.product_subcategory",
+            "event_data.form.fields.sub_category",
+            "event_data.form.fields.subcategory",
+            "event_data.product.sub_category",
+            "event_data.product.subcategory",
+            "data.product.sub_category",
+            "data.product.subcategory",
+            "raw.product_sub_category",
+            "raw.product_subcategory",
+        )
+        or str(product.get("sub_category") or product.get("subcategory") or first_item.get("item_subcategory") or first_item.get("sub_category") or first_item.get("subcategory") or category_obj.get("sub_category") or category_obj.get("subcategory") or "")
+    )
+
+    price = (
+        _v2_parse_money(_v2_detail_value(
+            obj,
+            "event_data.form.fields.product_price",
+            "event_data.form.fields.price",
+            "event_data.product.price",
+            "data.product.price",
+            "raw.product_price",
+            "raw.price",
+        ))
+        or _v2_parse_money(purchase.get("unit_price") or first_item.get("unit_price") or first_item.get("price") or purchase.get("total_price") or first_item.get("total_price"))
+    )
+
+    warranty_type = str(
+        protection.get("plan_name")
+        or protection.get("name")
+        or protection.get("type")
+        or first_item.get("item_variant")
+        or _v2_detail_value(obj, "event_data.warranty.type", "event_data.plan.type", "data.warranty.type", "data.plan.type")
+        or ""
+    ).strip()
+
+    warranty_tenure = str(
+        protection.get("term_months")
+        or protection.get("term")
+        or protection.get("tenure")
+        or _v2_detail_value(obj, "event_data.warranty.term_months", "event_data.warranty.tenure", "event_data.plan.term_months", "event_data.plan.tenure", "data.warranty.term_months")
+        or ""
+    ).strip()
+
+    plan_price = (
+        _v2_parse_money(protection.get("plan_price") or protection.get("price") or first_item.get("plan_price") or first_item.get("warrantyPrice") or first_item.get("warranty_price"))
+        or _v2_parse_money(_v2_detail_value(obj, "event_data.warranty.price", "event_data.plan.price", "data.warranty.price", "data.plan.price"))
+    )
+
+    return {
+        "Product Sub Category": subcategory or "",
+        "Price": round(float(price or 0), 2),
+        "Waranty Type": warranty_type,
+        "Warranty Tenure": warranty_tenure,
+        "Plan Price": round(float(plan_price or 0), 2),
+    }
+
+
+
+def _v2_order_payment_id(obj: dict) -> str:
+    return _v2_detail_value(
+        obj,
+        "event_data.order.id",
+        "event_data.order.order_id",
+        "event_data.order_id",
+        "event_data.payment.id",
+        "event_data.payment.payment_id",
+        "event_data.payment_id",
+        "event_data.checkout.id",
+        "event_data.checkout_id",
+        "data.order.id",
+        "data.order_id",
+        "data.payment.id",
+        "data.payment_id",
+        "order.id",
+        "order_id",
+        "payment.id",
+        "payment_id",
+        "id",
+    )
+
+
+def _v2_utm_values(obj: dict) -> dict:
+    source = _v2_attr_value(
+        obj,
+        "event_data.utm.source",
+        "event_data.utm_source",
+        "utm.source",
+        "utm_source",
+        "data.utm.source",
+        "data.utm_source",
+        "raw.utm_source",
+    ) or _v2_url_param_from_obj(obj, "utm_source")
+
+    medium = _v2_attr_value(
+        obj,
+        "event_data.utm.medium",
+        "event_data.utm_medium",
+        "utm.medium",
+        "utm_medium",
+        "data.utm.medium",
+        "data.utm_medium",
+        "raw.utm_medium",
+    ) or _v2_url_param_from_obj(obj, "utm_medium")
+
+    campaign = _v2_attr_value(
+        obj,
+        "event_data.utm.campaign",
+        "event_data.utm_campaign",
+        "utm.campaign",
+        "utm_campaign",
+        "data.utm.campaign",
+        "data.utm_campaign",
+        "raw.utm_campaign",
+    ) or _v2_url_param_from_obj(obj, "utm_campaign")
+
+    return {"UTM Source": source, "UTM Medium": medium, "UTM Campaign": campaign}
+
+
+def _v2_full_product_values(obj: dict, gwp=0) -> dict:
+    line_items = _v2_collect_line_items(obj)
+    item = line_items[0] if line_items else {}
+    product = item.get("product") if isinstance(item.get("product"), dict) else {}
+    purchase = item.get("purchase") if isinstance(item.get("purchase"), dict) else {}
+    protection = item.get("protection") if isinstance(item.get("protection"), dict) else {}
+    category_obj = product.get("category") if isinstance(product.get("category"), dict) else {}
+
+    product_category = (
+        category_obj.get("name")
+        or product.get("category")
+        or item.get("item_category")
+        or item.get("category")
+        or _v2_product_category_from_obj(obj)
+    )
+
+    product_title = (
+        product.get("title")
+        or product.get("name")
+        or product.get("description")
+        or item.get("item_name")
+        or item.get("name")
+        or _v2_detail_value(obj, "event_data.product.title", "event_data.product.name", "data.product.title", "data.product.name")
+    )
+
+    product_brand = (
+        product.get("brand")
+        or _v2_detail_value(obj, "event_data.product.brand", "data.product.brand", "raw.product_brand")
+    )
+
+    manufacturer = (
+        _v2_detail_value(obj, "manufacturer.name", "event_data.manufacturer.name", "data.manufacturer.name")
+        or product_brand
+    )
+
+    model_number = (
+        _v2_detail_value(obj, "manufacturer.model_number", "event_data.manufacturer.model_number", "data.manufacturer.model_number")
+        or str(product.get("sku") or product.get("model_number") or item.get("model_number") or "")
+    )
+
+    product_condition = str(
+        product.get("condition")
+        or item.get("condition")
+        or _v2_detail_value(obj, "event_data.product.condition", "data.product.condition")
+        or ""
+    ).strip()
+
+    quantity = _v2_item_quantity(item) if item else _v2_product_count_from_obj(obj, 1)
+
+    unit_price = _v2_parse_money(
+        purchase.get("unit_price")
+        or item.get("unit_price")
+        or item.get("price")
+        or _v2_detail_value(obj, "event_data.product.unit_price", "event_data.product.price", "data.product.price", "raw.product_price")
+    )
+
+    total_price = _v2_parse_money(purchase.get("total_price") or item.get("total_price"))
+    if not total_price and unit_price:
+        total_price = unit_price * quantity
+
+    warranty_type = str(
+        protection.get("type")
+        or _v2_detail_value(obj, "event_data.warranty.type", "event_data.plan.type", "data.warranty.type", "data.plan.type")
+        or ""
+    ).strip()
+
+    warranty_plan_name = str(
+        protection.get("plan_name")
+        or protection.get("name")
+        or item.get("item_variant")
+        or _v2_detail_value(obj, "event_data.warranty.plan_name", "event_data.plan.name", "data.warranty.plan_name", "data.plan.name")
+        or ""
+    ).strip()
+
+    warranty_price = (
+        _v2_parse_money(protection.get("plan_price") or protection.get("price") or item.get("plan_price") or item.get("warrantyPrice") or item.get("warranty_price"))
+        or _v2_parse_money(_v2_detail_value(obj, "event_data.warranty.price", "event_data.plan.price", "data.warranty.price", "data.plan.price"))
+        or _v2_parse_money(gwp)
+    )
+
+    warranty_term = str(
+        protection.get("term_months")
+        or protection.get("term")
+        or protection.get("tenure")
+        or _v2_detail_value(obj, "event_data.warranty.term_months", "event_data.plan.term_months", "data.warranty.term_months", "data.plan.term_months")
+        or ""
+    ).strip()
+
+    warranty_provider = str(
+        protection.get("provider")
+        or protection.get("underwriter")
+        or protection.get("administrator")
+        or _v2_detail_value(obj, "event_data.warranty.provider", "event_data.plan.provider", "data.warranty.provider", "data.plan.provider")
+        or ""
+    ).strip()
+
+    manufacturer_warranty = _v2_detail_value(
+        obj,
+        "manufacturer.warranty",
+        "event_data.manufacturer.warranty",
+        "data.manufacturer.warranty",
+        "event_data.product.manufacturer_warranty",
+        "data.product.manufacturer_warranty",
+    )
+
+    eligible_value = (
+        item.get("eligible")
+        if isinstance(item, dict) and "eligible" in item
+        else _v2_nested_get(obj, "event_data.eligible", "data.eligible", "eligible")
+    )
+    if isinstance(eligible_value, bool):
+        eligible = eligible_value
+    elif eligible_value in (None, ""):
+        eligible = ""
+    else:
+        eligible = str(eligible_value).strip()
+
+    return {
+        "Product Category": str(product_category or "Unknown"),
+        "Product Title": str(product_title or ""),
+        "Product Brand": str(product_brand or ""),
+        "Manufacturer": str(manufacturer or ""),
+        "Model Number": str(model_number or ""),
+        "Product Condition": product_condition,
+        "Quantity": quantity,
+        "Product Unit Price": round(float(unit_price or 0), 2),
+        "Product Total Price": round(float(total_price or 0), 2),
+        "Warranty Type": warranty_type,
+        "Warranty / Plan Name": warranty_plan_name,
+        "Warranty Price": round(float(warranty_price or 0), 2),
+        "Warranty Term Months": warranty_term,
+        "Warranty Provider": warranty_provider,
+        "Manufacturer Warranty": manufacturer_warranty,
+        "Eligible": eligible,
+    }
+
+
+def _v2_paid_source_bucket(obj: dict, source_bucket: str) -> str:
+    if source_bucket in {"Meta", "Google", "Tiktok"}:
+        return source_bucket
+
+    utm_source = str(
+        _v2_nested_get(
+            obj,
+            "event_data.utm.source",
+            "event_data.utm_source",
+            "utm.source",
+            "utm_source",
+            "data.utm.source",
+            "data.utm_source",
+            "raw.utm_source",
+        )
+        or ""
+    ).strip().lower()
+
+    utm_medium = str(
+        _v2_nested_get(
+            obj,
+            "event_data.utm.medium",
+            "event_data.utm_medium",
+            "utm.medium",
+            "utm_medium",
+            "data.utm.medium",
+            "data.utm_medium",
+            "raw.utm_medium",
+        )
+        or ""
+    ).strip().lower()
+
+    combined = f"{utm_source} {utm_medium}".lower()
+    if any(token in combined for token in ["influencer", "creator", "affiliate", "collab"]):
+        return "Influencers"
+
+    return "Others"
+
+
 def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
     if clean_audit is None or clean_audit.empty:
-        return pd.DataFrame(columns=["Date", "event_name", "flow_method", "flow_status", "gwp"])
+        return pd.DataFrame(columns=["Date", "event_name", "flow_method", "flow_status", "Product Category", "gwp"])
 
     rows = []
     for _, row in clean_audit.iterrows():
@@ -833,15 +1635,66 @@ def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
             "data.flow.status",
             "flow.status",
         )
+
+        event_name = _v2_norm_value(row.get("event_name", ""))
+        gwp = float(row.get("gwp", 0) or 0)
+        product_count_fallback = row.get("product_count", 0)
+        identity = str(row.get("session_id", "") or "").strip() or str(row.get("identity_key", "") or "").strip()
+
+        source_bucket = _v2_source_bucket(obj)
+        campaign_values = _v2_campaign_values(obj)
+        product_detail_values = _v2_product_detail_values(obj)
+        full_product_values = _v2_full_product_values(obj, gwp)
+        utm_values = _v2_utm_values(obj)
+
         rows.append(
             {
                 "Date": str(row.get("date", "") or ""),
-                "event_name": _v2_norm_value(row.get("event_name", "")),
+                "event_name": event_name,
                 "flow_method": _v2_norm_value(flow_method),
                 "flow_status": _v2_norm_value(flow_status),
                 "Journey Type": _v2_label(flow_method),
                 "Invoice Status": _v2_label(flow_status),
-                "gwp": float(row.get("gwp", 0) or 0),
+                "Product Category": _v2_product_category_from_obj(obj),
+                "Source": source_bucket,
+                "Traffic Source": source_bucket,
+                "Paid Campaign Source": _v2_paid_source_bucket(obj, source_bucket),
+                "Campaign Name": campaign_values["Campaign Name"],
+                "Adset Name": campaign_values["Adset Name"],
+                "Ad Name": campaign_values["Ad Name"],
+                "Name": _v2_name_from_obj(obj),
+                "Email": _v2_email_from_obj(obj),
+                "Product Sub Category": product_detail_values["Product Sub Category"],
+                "Price": product_detail_values["Price"],
+                "Waranty Type": product_detail_values["Waranty Type"],
+                "Warranty Tenure": product_detail_values["Warranty Tenure"],
+                "Plan Price": product_detail_values["Plan Price"],
+                "Journey Flow": _v2_label(flow_method),
+                "Event": event_name,
+                "Order / Payment ID": _v2_order_payment_id(obj),
+                "Product Title": full_product_values["Product Title"],
+                "Product Brand": full_product_values["Product Brand"],
+                "Manufacturer": full_product_values["Manufacturer"],
+                "Model Number": full_product_values["Model Number"],
+                "Product Condition": full_product_values["Product Condition"],
+                "Quantity": full_product_values["Quantity"],
+                "Product Unit Price": full_product_values["Product Unit Price"],
+                "Product Total Price": full_product_values["Product Total Price"],
+                "Warranty Type": full_product_values["Warranty Type"],
+                "Warranty / Plan Name": full_product_values["Warranty / Plan Name"],
+                "Warranty Price": full_product_values["Warranty Price"],
+                "Warranty Term Months": full_product_values["Warranty Term Months"],
+                "Warranty Provider": full_product_values["Warranty Provider"],
+                "Manufacturer Warranty": full_product_values["Manufacturer Warranty"],
+                "Eligible": full_product_values["Eligible"],
+                "Gross GWP $": round(float(gwp or 0), 2),
+                "UTM Source": utm_values["UTM Source"],
+                "UTM Medium": utm_values["UTM Medium"],
+                "UTM Campaign": utm_values["UTM Campaign"],
+                "identity": identity,
+                "product_count": _v2_product_count_from_obj(obj, product_count_fallback),
+                "cart_value": _v2_cart_value_from_obj(obj, row.get("gwp", 0)),
+                "gwp": gwp,
             }
         )
 
@@ -877,6 +1730,218 @@ def _v2_build_daily_tab1(events: pd.DataFrame) -> pd.DataFrame:
     return out[V2_DAILY_COLUMNS]
 
 
+
+
+def _v2_build_daily_tab2(events: pd.DataFrame) -> pd.DataFrame:
+    if events is None or events.empty:
+        return pd.DataFrame(columns=V2_TAB2_COLUMNS)
+
+    df = events.copy()
+    if df.empty:
+        return pd.DataFrame(columns=V2_TAB2_COLUMNS)
+
+    rows = []
+    for day, g in df.groupby("Date", dropna=False):
+        initiate = g[g["event_name"] == "initiate_checkout"]
+        payment_success = g[g["event_name"] == "payment_success"]
+        payment_failure = g[g["event_name"] == "payment_failure"]
+
+        rows.append(
+            {
+                "Date": day,
+                "Enquiry Attempted": int((g["event_name"] == "enquiry_attempted").sum()),
+                "Enquiry Success": int((g["event_name"] == "enquiry_success").sum()),
+                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
+                "Innitiate Checkout_User Count": int(initiate["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
+                "Innitiate Checkout_Product Count": int(initiate["product_count"].fillna(0).sum()),
+                "Innitiate Checkout_Cart Value": round(float(initiate["cart_value"].fillna(0).sum()), 2),
+                "Payment Success_ User Count": int(payment_success["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
+                "Payment Failure_ User Count": int(payment_failure["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
+                "Payment Success_ Product Count": int(payment_success["product_count"].fillna(0).sum()),
+                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return pd.DataFrame(columns=V2_TAB2_COLUMNS)
+    out = out.sort_values("Date", ascending=False).reset_index(drop=True)
+    return out[V2_TAB2_COLUMNS]
+
+
+
+
+def _v2_build_source_tab3(events: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    if events is None or events.empty:
+        return pd.DataFrame([{col: (source if col == "Source" else 0) for col in V2_TAB3_COLUMNS} for source in V2_TAB3_SOURCES])
+
+    df = events.copy()
+    for source in V2_TAB3_SOURCES:
+        g = df[df["Source"] == source]
+        payment_success = g[g["event_name"] == "payment_success"]
+        rows.append(
+            {
+                "Source": source,
+                "Traffic (Total)": int(g["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
+                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
+                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
+                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
+                "Payment Success": int((g["event_name"] == "payment_success").sum()),
+                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
+                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    return out[V2_TAB3_COLUMNS]
+
+
+
+
+def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list[str], output_cols: list[str]) -> pd.DataFrame:
+    if events is None or events.empty:
+        return pd.DataFrame(columns=output_cols)
+
+    rows = []
+    for key, g in events.groupby(group_cols, dropna=False):
+        if not isinstance(key, tuple):
+            key = (key,)
+        payment_success = g[g["event_name"] == "payment_success"]
+        base = {col: (str(val) if val not in (None, "") else "Unknown") for col, val in zip(group_cols, key)}
+        base.update(
+            {
+                "Traffic (Total)": int(g["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
+                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
+                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
+                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
+                "Payment Success": int((g["event_name"] == "payment_success").sum()),
+                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
+                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2),
+            }
+        )
+        rows.append(base)
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return pd.DataFrame(columns=output_cols)
+    out = out.sort_values(["Traffic (Total)", "Payment Success", "Gross GWP $"], ascending=[False, False, False]).reset_index(drop=True)
+    return out.reindex(columns=output_cols)
+
+
+def _v2_build_paid_campaign_tab4(events: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    campaign = _v2_aggregate_campaign_table(events, ["Campaign Name"], V2_TAB4_CAMPAIGN_COLUMNS)
+    adset = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name"], V2_TAB4_ADSET_COLUMNS)
+    ad = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name", "Ad Name"], V2_TAB4_AD_COLUMNS)
+    return campaign, adset, ad
+
+
+
+
+def _v2_build_category_tab5(events: pd.DataFrame) -> pd.DataFrame:
+    if events is None or events.empty:
+        return pd.DataFrame(columns=V2_TAB5_COLUMNS)
+
+    rows = []
+    for category, g in events.groupby("Product Category", dropna=False):
+        payment_success = g[g["event_name"] == "payment_success"]
+        rows.append(
+            {
+                "Category": str(category) if str(category or "").strip() else "Unknown",
+                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
+                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
+                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
+                "Payment Success": int((g["event_name"] == "payment_success").sum()),
+                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
+                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return pd.DataFrame(columns=V2_TAB5_COLUMNS)
+    out = out.sort_values(["Payment Success", "Gross GWP $", "Enquiry Attempted_Total"], ascending=[False, False, False]).reset_index(drop=True)
+    return out[V2_TAB5_COLUMNS]
+
+
+
+
+def _v2_first_nonempty(series: pd.Series) -> str:
+    for value in series.tolist():
+        if value not in (None, "") and str(value).strip():
+            return value
+    return ""
+
+
+def _v2_build_detail_tab6(events: pd.DataFrame) -> pd.DataFrame:
+    if events is None or events.empty:
+        return pd.DataFrame(columns=V2_TAB6_COLUMNS)
+
+    df = events.copy()
+    if "event_name" in df.columns:
+        df = df[df["event_name"].isin(V2_EVENT_SEQUENCE)].copy()
+
+    if df.empty:
+        return pd.DataFrame(columns=V2_TAB6_COLUMNS)
+
+    # Keep one row per session/identity. The displayed Date and Last Event come
+    # from the latest event after filtering; details use the first available
+    # non-empty value from the same session.
+    rows = []
+    for identity, g in df.groupby("identity", dropna=False):
+        if not str(identity or "").strip():
+            continue
+
+        g = g.sort_values("Date")
+        latest = g.iloc[-1]
+        rows.append(
+            {
+                "Date": latest.get("Date", ""),
+                "Name": _v2_first_nonempty(g["Name"]) if "Name" in g.columns else "",
+                "Email": _v2_first_nonempty(g["Email"]) if "Email" in g.columns else "",
+                "Last Event": str(latest.get("event_name", "")).replace("_", " ").title(),
+                "Product Sub Category": _v2_first_nonempty(g["Product Sub Category"]) if "Product Sub Category" in g.columns else "",
+                "Price": _v2_first_nonempty(g["Price"]) if "Price" in g.columns else 0,
+                "Waranty Type": _v2_first_nonempty(g["Waranty Type"]) if "Waranty Type" in g.columns else "",
+                "Warranty Tenure": _v2_first_nonempty(g["Warranty Tenure"]) if "Warranty Tenure" in g.columns else "",
+                "Plan Price": _v2_first_nonempty(g["Plan Price"]) if "Plan Price" in g.columns else 0,
+                "UTM Campaign Name": _v2_first_nonempty(g["Campaign Name"]) if "Campaign Name" in g.columns else "",
+                "UTM Adset Name": _v2_first_nonempty(g["Adset Name"]) if "Adset Name" in g.columns else "",
+                "UTM Ad Name": _v2_first_nonempty(g["Ad Name"]) if "Ad Name" in g.columns else "",
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return pd.DataFrame(columns=V2_TAB6_COLUMNS)
+    out = out.sort_values(["Date", "Last Event"], ascending=[False, True]).reset_index(drop=True)
+    return out[V2_TAB6_COLUMNS]
+
+
+
+
+def _v2_build_order_event_tab7(events: pd.DataFrame) -> pd.DataFrame:
+    if events is None or events.empty:
+        return pd.DataFrame(columns=V2_TAB7_COLUMNS)
+
+    df = events.copy()
+    if "event_name" in df.columns:
+        df = df[df["event_name"].isin(V2_EVENT_SEQUENCE)].copy()
+
+    if df.empty:
+        return pd.DataFrame(columns=V2_TAB7_COLUMNS)
+
+    out = df.copy()
+    out["Event"] = out["event_name"].astype(str)
+    for col in V2_TAB7_COLUMNS:
+        if col not in out.columns:
+            out[col] = ""
+
+    out = out[V2_TAB7_COLUMNS].copy()
+    out = out.sort_values(["Date", "Email", "Event"], ascending=[False, True, True]).reset_index(drop=True)
+    return out
+
+
 def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     events = _v2_clean_events_frame(clean_audit)
 
@@ -888,29 +1953,132 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     present_status = sorted([x for x in events.get("Invoice Status", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
     combined_status = list(dict.fromkeys(invoice_options + present_status))
 
+    present_categories = sorted([x for x in events.get("Product Category", pd.Series(dtype=str)).dropna().unique().tolist() if x])
+    combined_categories = list(dict.fromkeys(["All"] + present_categories))
+
+    present_paid_sources = sorted([x for x in events.get("Paid Campaign Source", pd.Series(dtype=str)).dropna().unique().tolist() if x])
+    combined_paid_sources = list(dict.fromkeys(V2_PAID_SOURCE_OPTIONS + present_paid_sources))
+
+    present_traffic_sources = sorted([x for x in events.get("Traffic Source", pd.Series(dtype=str)).dropna().unique().tolist() if x])
+    combined_traffic_sources = list(dict.fromkeys(V2_TRAFFIC_SOURCE_OPTIONS + present_traffic_sources))
+
     st.markdown("##### Filters")
-    c1, c2 = st.columns([1, 1])
+    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
     selected_journey = c1.multiselect("Journey Type", combined_journey, default=combined_journey, label_visibility="collapsed", placeholder="Journey Type")
     selected_status = c2.multiselect("Invoice Status", combined_status, default=combined_status, label_visibility="collapsed", placeholder="Invoice Status")
+    selected_categories = c3.multiselect("Product Category", combined_categories, default=["All"], label_visibility="collapsed", placeholder="Product Category")
+    selected_paid_sources = c4.multiselect("Paid Campaign Source", combined_paid_sources, default=combined_paid_sources, label_visibility="collapsed", placeholder="Paid Campaign Source")
+    selected_traffic_sources = c5.multiselect("Traffic Source", combined_traffic_sources, default=combined_traffic_sources, label_visibility="collapsed", placeholder="Traffic Source")
 
     filtered = events.copy()
     if selected_journey:
         filtered = filtered[filtered["Journey Type"].isin(selected_journey)]
     if selected_status:
-        # Keep events with no invoice status only when no explicit invoice filter exists.
         filtered = filtered[filtered["Invoice Status"].isin(selected_status)]
 
-    tab1 = _v2_build_daily_tab1(filtered)
+    filtered_tab2 = filtered.copy()
+    if selected_categories and "All" not in selected_categories:
+        filtered_tab2 = filtered_tab2[filtered_tab2["Product Category"].isin(selected_categories)]
 
-    st.markdown("##### Tab 1: Daily Metrics")
-    st.dataframe(tab1, use_container_width=True, hide_index=True)
+    filtered_tab4 = filtered_tab2.copy()
+    if selected_paid_sources:
+        filtered_tab4 = filtered_tab4[filtered_tab4["Paid Campaign Source"].isin(selected_paid_sources)]
 
-    st.download_button(
-        "Download V2 Tab 1 CSV",
-        data=dataframe_to_csv_bytes(tab1),
-        file_name="v2_daily_metrics_tab1.csv",
-        mime="text/csv",
-    )
+    filtered_tab6 = filtered_tab2.copy()
+    if selected_traffic_sources:
+        filtered_tab6 = filtered_tab6[filtered_tab6["Traffic Source"].isin(selected_traffic_sources)]
+
+    tab1_view, tab2_view, tab3_view, tab4_view, tab5_view, tab6_view, tab7_view = st.tabs(["Tab 1: Daily Metrics", "Tab 2: Product Category Metrics", "Tab 3: Source Metrics", "Tab 4: Paid Campaign Metrics", "Tab 5: Category Metrics", "Tab 6: Detail View", "Tab 7: Order Event Detail"])
+
+    with tab1_view:
+        tab1 = _v2_build_daily_tab1(filtered)
+        st.dataframe(tab1, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 1 CSV",
+            data=dataframe_to_csv_bytes(tab1),
+            file_name="v2_daily_metrics_tab1.csv",
+            mime="text/csv",
+        )
+
+    with tab2_view:
+        tab2 = _v2_build_daily_tab2(filtered_tab2)
+        st.dataframe(tab2, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 2 CSV",
+            data=dataframe_to_csv_bytes(tab2),
+            file_name="v2_product_category_metrics_tab2.csv",
+            mime="text/csv",
+        )
+
+    with tab3_view:
+        tab3 = _v2_build_source_tab3(filtered_tab2)
+        st.dataframe(tab3, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 3 CSV",
+            data=dataframe_to_csv_bytes(tab3),
+            file_name="v2_source_metrics_tab3.csv",
+            mime="text/csv",
+        )
+
+    with tab4_view:
+        campaign_table, adset_table, ad_table = _v2_build_paid_campaign_tab4(filtered_tab4)
+
+        st.markdown("###### 1. Campaign")
+        st.dataframe(campaign_table, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 4 Campaign CSV",
+            data=dataframe_to_csv_bytes(campaign_table),
+            file_name="v2_paid_campaign_metrics_campaign.csv",
+            mime="text/csv",
+        )
+
+        st.markdown("###### 2. Campaign + Adset")
+        st.dataframe(adset_table, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 4 Adset CSV",
+            data=dataframe_to_csv_bytes(adset_table),
+            file_name="v2_paid_campaign_metrics_adset.csv",
+            mime="text/csv",
+        )
+
+        st.markdown("###### 3. Campaign + Adset + Ad")
+        st.dataframe(ad_table, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 4 Ad CSV",
+            data=dataframe_to_csv_bytes(ad_table),
+            file_name="v2_paid_campaign_metrics_ad.csv",
+            mime="text/csv",
+        )
+
+    with tab5_view:
+        tab5 = _v2_build_category_tab5(filtered_tab2)
+        st.dataframe(tab5, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 5 CSV",
+            data=dataframe_to_csv_bytes(tab5),
+            file_name="v2_category_metrics_tab5.csv",
+            mime="text/csv",
+        )
+
+    with tab6_view:
+        tab6 = _v2_build_detail_tab6(filtered_tab6)
+        st.dataframe(tab6, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 6 CSV",
+            data=dataframe_to_csv_bytes(tab6),
+            file_name="v2_detail_view_tab6.csv",
+            mime="text/csv",
+        )
+
+    with tab7_view:
+        tab7 = _v2_build_order_event_tab7(filtered_tab4)
+        st.dataframe(tab7, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download V2 Tab 7 CSV",
+            data=dataframe_to_csv_bytes(tab7),
+            file_name="v2_order_event_detail_tab7.csv",
+            mime="text/csv",
+        )
 
 
 def main() -> None:
