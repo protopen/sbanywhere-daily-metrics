@@ -1,43 +1,17 @@
-# V2 Tab 7 build
+# V2 checkbox filter UI update
 
-Built on top of V2 Tab 6.
+Built on top of V2 Tab 7.
 
 Changes:
-- Adds V2 Tab 7: Order Event Detail.
-- Uses same filters as Tab 4:
-  - Date From / Till via global date filter
-  - Journey Type from flow.method
-  - Invoice Status from flow.status
-  - Product Category, default All
+- Added visible filter labels above each filter:
+  - Journey Type
+  - Invoice Status
+  - Product Category
   - Paid Campaign Source
-
-Tab 7 table columns:
-- Date
-- Name
-- Email
-- Journey Flow
-- Event
-- Order / Payment ID
-- Product Category
-- Product Title
-- Product Brand
-- Manufacturer
-- Model Number
-- Product Condition
-- Quantity
-- Product Unit Price
-- Product Total Price
-- Warranty Type
-- Warranty / Plan Name
-- Warranty Price
-- Warranty Term Months
-- Warranty Provider
-- Manufacturer Warranty
-- Eligible
-- Gross GWP $
-- UTM Source
-- UTM Medium
-- UTM Campaign
+  - Traffic Source
+- Replaced dropdown-style multiselects with compact checkbox-style filter panels.
+- Filter panel/header height is fixed, with internal scroll for longer option lists.
+- Preserved all V2 tabs 1 through 7 and V1 sidebar access.
 
 Replace these files in GitHub:
 - streamlit_d2c_metrics_app_supabase.py
