@@ -1,18 +1,22 @@
-# V2 page_view separation update
+# V2 traffic/page_view + last-click update
 
-Built on top of V2 anomaly logs build.
+Built on top of V2 KPI alignment build.
 
 Changes:
-- `page_view` is treated as a separate traffic event.
-- `page_view` is documented as coming before `enquiry_attempted` in the journey sequence.
-- `page_view` is intentionally excluded from all current V2 dashboard calculations and tables for now.
-- `enquiry_attempted` remains a separate conversion/funnel event.
-- Existing V2 traffic object parsing support is preserved for future use.
+- Invoice Status filter is now unselected by default across V2 tabs.
+  - If no invoice status is selected, the dashboard does not filter by invoice status.
+- Source Metrics now uses last-click attribution for source bucketing.
+  - It prefers `traffic.attribution.last_touch` paths.
+  - It falls back to `traffic.marketing`, then older payload paths.
+- Any table column named `Traffic (Total)` now counts unique traffic identities from `page_view` events only.
+  - Source Metrics traffic uses page_view by source.
+  - Paid Campaign Metrics traffic uses page_view by campaign/adset/ad.
+- `page_view` remains separate from conversion events and is not counted as enquiry_attempted.
 
 Preserved:
+- KPI alignment in V2 Daily Metrics.
 - V2 starts from 26 Jun 2026.
 - V1 stops before 26 Jun 2026.
-- New `traffic` object parsing support.
 - Journey Type anomaly logs.
 - Conditional per-tab filters.
 - Visible filter names.

@@ -1115,16 +1115,18 @@ def _v2_url_query_value(value: str, key: str) -> str:
 
 
 def _v2_source_bucket(obj: dict) -> str:
+    # Last-click source bucketing. Prefer traffic.attribution.last_touch,
+    # then fall back to current marketing/page fields, then older payload paths.
     utm_source = str(
         _v2_nested_get(
             obj,
-            "traffic.marketing.utm_source",
             "traffic.attribution.last_touch.utm_source",
             "traffic.attribution.last_touch.source",
-            "traffic.attribution.first_touch.utm_source",
-            "traffic.attribution.first_touch.source",
+            "traffic.marketing.utm_source",
             "traffic.attribution.last_non_direct_touch.utm_source",
             "traffic.attribution.last_non_direct_touch.source",
+            "traffic.attribution.first_touch.utm_source",
+            "traffic.attribution.first_touch.source",
             "event_data.utm.source",
             "event_data.utm_source",
             "utm.source",
@@ -1139,13 +1141,13 @@ def _v2_source_bucket(obj: dict) -> str:
     utm_medium = str(
         _v2_nested_get(
             obj,
-            "traffic.marketing.utm_medium",
             "traffic.attribution.last_touch.utm_medium",
             "traffic.attribution.last_touch.medium",
-            "traffic.attribution.first_touch.utm_medium",
-            "traffic.attribution.first_touch.medium",
+            "traffic.marketing.utm_medium",
             "traffic.attribution.last_non_direct_touch.utm_medium",
             "traffic.attribution.last_non_direct_touch.medium",
+            "traffic.attribution.first_touch.utm_medium",
+            "traffic.attribution.first_touch.medium",
             "event_data.utm.medium",
             "event_data.utm_medium",
             "utm.medium",
@@ -1157,13 +1159,24 @@ def _v2_source_bucket(obj: dict) -> str:
         or ""
     ).strip().lower()
 
+    traffic_channel = str(
+        _v2_nested_get(
+            obj,
+            "traffic.attribution.last_touch.channel",
+            "traffic.channel",
+            "traffic.attribution.last_non_direct_touch.channel",
+            "traffic.attribution.first_touch.channel",
+        )
+        or ""
+    ).strip().lower()
+
     page_url = str(
         _v2_nested_get(
             obj,
-            "traffic.page.url",
             "traffic.attribution.last_touch.landing_page",
-            "traffic.attribution.first_touch.landing_page",
+            "traffic.page.url",
             "traffic.attribution.last_non_direct_touch.landing_page",
+            "traffic.attribution.first_touch.landing_page",
             "source.page_url",
             "source.url",
             "page_url",
@@ -1177,10 +1190,10 @@ def _v2_source_bucket(obj: dict) -> str:
     referrer = str(
         _v2_nested_get(
             obj,
-            "traffic.page.referrer",
             "traffic.attribution.last_touch.referrer",
-            "traffic.attribution.first_touch.referrer",
+            "traffic.page.referrer",
             "traffic.attribution.last_non_direct_touch.referrer",
+            "traffic.attribution.first_touch.referrer",
             "source.referrer",
             "source.referrer_url",
             "referrer",
@@ -1193,11 +1206,11 @@ def _v2_source_bucket(obj: dict) -> str:
     )
 
     ref_domain = _v2_url_domain(referrer)
-    page_has_gclid = bool(_v2_url_query_value(page_url, "gclid"))
-    page_has_fbclid = bool(_v2_url_query_value(page_url, "fbclid"))
-    page_has_ttclid = bool(_v2_url_query_value(page_url, "ttclid"))
+    page_has_gclid = bool(_v2_url_query_value(page_url, "gclid") or _v2_nested_get(obj, "traffic.attribution.last_touch.gclid", "traffic.marketing.gclid"))
+    page_has_fbclid = bool(_v2_url_query_value(page_url, "fbclid") or _v2_nested_get(obj, "traffic.attribution.last_touch.fbclid", "traffic.marketing.fbclid"))
+    page_has_ttclid = bool(_v2_url_query_value(page_url, "ttclid") or _v2_nested_get(obj, "traffic.attribution.last_touch.ttclid", "traffic.marketing.ttclid"))
 
-    source_text = f"{utm_source} {utm_medium} {ref_domain}".lower()
+    source_text = f"{utm_source} {utm_medium} {traffic_channel} {ref_domain}".lower()
 
     if any(token in source_text for token in ["facebook", "instagram", "meta", "fb", "ig"]) or page_has_fbclid:
         return "Meta"
@@ -1220,6 +1233,7 @@ def _v2_source_bucket(obj: dict) -> str:
         return "Direct"
 
     return "Others"
+
 
 
 
@@ -1254,10 +1268,10 @@ def _v2_url_param_from_obj(obj: dict, key: str) -> str:
 def _v2_campaign_values(obj: dict) -> dict:
     campaign = _v2_attr_value(
         obj,
-        "traffic.marketing.utm_campaign",
         "traffic.attribution.last_touch.utm_campaign",
-        "traffic.attribution.first_touch.utm_campaign",
+        "traffic.marketing.utm_campaign",
         "traffic.attribution.last_non_direct_touch.utm_campaign",
+        "traffic.attribution.first_touch.utm_campaign",
         "event_data.utm.campaign",
         "event_data.utm_campaign",
         "utm.campaign",
@@ -1269,10 +1283,10 @@ def _v2_campaign_values(obj: dict) -> dict:
 
     adset = _v2_attr_value(
         obj,
-        "traffic.marketing.utm_term",
         "traffic.attribution.last_touch.utm_term",
-        "traffic.attribution.first_touch.utm_term",
+        "traffic.marketing.utm_term",
         "traffic.attribution.last_non_direct_touch.utm_term",
+        "traffic.attribution.first_touch.utm_term",
         "event_data.utm.adset",
         "event_data.utm.ad_set",
         "event_data.utm_adset",
@@ -1295,10 +1309,10 @@ def _v2_campaign_values(obj: dict) -> dict:
 
     ad = _v2_attr_value(
         obj,
-        "traffic.marketing.utm_content",
         "traffic.attribution.last_touch.utm_content",
-        "traffic.attribution.first_touch.utm_content",
+        "traffic.marketing.utm_content",
         "traffic.attribution.last_non_direct_touch.utm_content",
+        "traffic.attribution.first_touch.utm_content",
         "event_data.utm.ad",
         "event_data.utm_ad",
         "event_data.ad_name",
@@ -1496,10 +1510,10 @@ def _v2_utm_values(obj: dict) -> dict:
 
     campaign = _v2_attr_value(
         obj,
-        "traffic.marketing.utm_campaign",
         "traffic.attribution.last_touch.utm_campaign",
-        "traffic.attribution.first_touch.utm_campaign",
+        "traffic.marketing.utm_campaign",
         "traffic.attribution.last_non_direct_touch.utm_campaign",
+        "traffic.attribution.first_touch.utm_campaign",
         "event_data.utm.campaign",
         "event_data.utm_campaign",
         "utm.campaign",
@@ -1791,6 +1805,52 @@ def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+
+def _v2_clean_page_view_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
+    if clean_audit is None or clean_audit.empty:
+        return pd.DataFrame(columns=["Date", "event_name", "Source", "Traffic Source", "Paid Campaign Source", "Campaign Name", "Adset Name", "Ad Name", "identity", "Journey Type", "Invoice Status", "Product Category"])
+
+    rows = []
+    for _, row in clean_audit.iterrows():
+        event_name = _v2_norm_value(row.get("event_name", ""))
+        if event_name not in V2_TRAFFIC_EVENT_SEQUENCE:
+            continue
+
+        obj = _v2_safe_json(row.get("raw_json", "{}"))
+        flow_method = _v2_nested_get(obj, "event_data.flow.method", "data.flow.method", "flow.method")
+        flow_status = _v2_nested_get(obj, "event_data.flow.status", "data.flow.status", "flow.status")
+        identity = str(row.get("session_id", "") or "").strip() or str(row.get("identity_key", "") or "").strip()
+        source_bucket = _v2_source_bucket(obj)
+        campaign_values = _v2_campaign_values(obj)
+
+        rows.append(
+            {
+                "Date": str(row.get("date", "") or ""),
+                "event_name": event_name,
+                "flow_method": _v2_norm_value(flow_method),
+                "flow_status": _v2_norm_value(flow_status),
+                "Journey Type": _v2_label(flow_method),
+                "Invoice Status": _v2_label(flow_status),
+                "Product Category": _v2_product_category_from_obj(obj),
+                "Source": source_bucket,
+                "Traffic Source": source_bucket,
+                "Paid Campaign Source": _v2_paid_source_bucket(obj, source_bucket),
+                "Campaign Name": campaign_values["Campaign Name"],
+                "Adset Name": campaign_values["Adset Name"],
+                "Ad Name": campaign_values["Ad Name"],
+                "identity": identity,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _v2_unique_traffic_count(df: pd.DataFrame) -> int:
+    if df is None or df.empty or "identity" not in df.columns:
+        return 0
+    return int(df["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique())
+
+
 def _v2_build_daily_tab1(events: pd.DataFrame) -> pd.DataFrame:
     if events is None or events.empty:
         return pd.DataFrame(columns=V2_DAILY_COLUMNS)
@@ -1861,25 +1921,25 @@ def _v2_build_daily_tab2(events: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def _v2_build_source_tab3(events: pd.DataFrame) -> pd.DataFrame:
+def _v2_build_source_tab3(events: pd.DataFrame, traffic_events: pd.DataFrame | None = None) -> pd.DataFrame:
     rows = []
-    if events is None or events.empty:
-        return pd.DataFrame([{col: (source if col == "Source" else 0) for col in V2_TAB3_COLUMNS} for source in V2_TAB3_SOURCES])
+    df = events.copy() if events is not None and not events.empty else pd.DataFrame()
+    traffic_df = traffic_events.copy() if traffic_events is not None and not traffic_events.empty else pd.DataFrame()
 
-    df = events.copy()
     for source in V2_TAB3_SOURCES:
-        g = df[df["Source"] == source]
-        payment_success = g[g["event_name"] == "payment_success"]
+        g = df[df["Source"] == source] if not df.empty and "Source" in df.columns else pd.DataFrame()
+        tg = traffic_df[traffic_df["Source"] == source] if not traffic_df.empty and "Source" in traffic_df.columns else pd.DataFrame()
+        payment_success = g[g["event_name"] == "payment_success"] if not g.empty else pd.DataFrame()
         rows.append(
             {
                 "Source": source,
-                "Traffic (Total)": int(g["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
-                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
-                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
-                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
-                "Payment Success": int((g["event_name"] == "payment_success").sum()),
-                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
-                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2),
+                "Traffic (Total)": _v2_unique_traffic_count(tg),
+                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()) if not g.empty else 0,
+                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()) if not g.empty else 0,
+                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()) if not g.empty else 0,
+                "Payment Success": int((g["event_name"] == "payment_success").sum()) if not g.empty else 0,
+                "Payment Failure": int((g["event_name"] == "payment_failure").sum()) if not g.empty else 0,
+                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2) if not payment_success.empty else 0,
             }
         )
 
@@ -1889,25 +1949,45 @@ def _v2_build_source_tab3(events: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list[str], output_cols: list[str]) -> pd.DataFrame:
-    if events is None or events.empty:
+def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list[str], output_cols: list[str], traffic_events: pd.DataFrame | None = None) -> pd.DataFrame:
+    events_df = events.copy() if events is not None and not events.empty else pd.DataFrame(columns=group_cols + ["event_name", "identity", "gwp"])
+    traffic_df = traffic_events.copy() if traffic_events is not None and not traffic_events.empty else pd.DataFrame(columns=group_cols + ["identity"])
+
+    if events_df.empty and traffic_df.empty:
         return pd.DataFrame(columns=output_cols)
 
+    key_frames = []
+    if not events_df.empty:
+        key_frames.append(events_df[group_cols])
+    if not traffic_df.empty:
+        key_frames.append(traffic_df[group_cols])
+    keys_df = pd.concat(key_frames, ignore_index=True).drop_duplicates() if key_frames else pd.DataFrame(columns=group_cols)
+
     rows = []
-    for key, g in events.groupby(group_cols, dropna=False):
-        if not isinstance(key, tuple):
-            key = (key,)
-        payment_success = g[g["event_name"] == "payment_success"]
-        base = {col: (str(val) if val not in (None, "") else "Unknown") for col, val in zip(group_cols, key)}
+    for _, key_row in keys_df.iterrows():
+        mask_events = pd.Series(True, index=events_df.index)
+        mask_traffic = pd.Series(True, index=traffic_df.index)
+        base = {}
+        for col in group_cols:
+            val = key_row.get(col, "")
+            val_clean = str(val) if val not in (None, "") else "Unknown"
+            base[col] = val_clean
+            mask_events = mask_events & (events_df[col].fillna("").astype(str) == str(val))
+            mask_traffic = mask_traffic & (traffic_df[col].fillna("").astype(str) == str(val))
+
+        g = events_df[mask_events] if not events_df.empty else pd.DataFrame()
+        tg = traffic_df[mask_traffic] if not traffic_df.empty else pd.DataFrame()
+        payment_success = g[g["event_name"] == "payment_success"] if not g.empty else pd.DataFrame()
+
         base.update(
             {
-                "Traffic (Total)": int(g["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
-                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
-                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
-                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
-                "Payment Success": int((g["event_name"] == "payment_success").sum()),
-                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
-                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2),
+                "Traffic (Total)": _v2_unique_traffic_count(tg),
+                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()) if not g.empty else 0,
+                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()) if not g.empty else 0,
+                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()) if not g.empty else 0,
+                "Payment Success": int((g["event_name"] == "payment_success").sum()) if not g.empty else 0,
+                "Payment Failure": int((g["event_name"] == "payment_failure").sum()) if not g.empty else 0,
+                "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2) if not payment_success.empty else 0,
             }
         )
         rows.append(base)
@@ -1919,10 +1999,10 @@ def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list[str], ou
     return out.reindex(columns=output_cols)
 
 
-def _v2_build_paid_campaign_tab4(events: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    campaign = _v2_aggregate_campaign_table(events, ["Campaign Name"], V2_TAB4_CAMPAIGN_COLUMNS)
-    adset = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name"], V2_TAB4_ADSET_COLUMNS)
-    ad = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name", "Ad Name"], V2_TAB4_AD_COLUMNS)
+def _v2_build_paid_campaign_tab4(events: pd.DataFrame, traffic_events: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    campaign = _v2_aggregate_campaign_table(events, ["Campaign Name"], V2_TAB4_CAMPAIGN_COLUMNS, traffic_events)
+    adset = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name"], V2_TAB4_ADSET_COLUMNS, traffic_events)
+    ad = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name", "Ad Name"], V2_TAB4_AD_COLUMNS, traffic_events)
     return campaign, adset, ad
 
 
@@ -2102,8 +2182,24 @@ def _v2_build_anomaly_logs(events: pd.DataFrame) -> pd.DataFrame:
     return out[V2_ANOMALY_LOG_COLUMNS].sort_values(["Date", "Event"], ascending=[False, True]).reset_index(drop=True)
 
 
+
+
+def _v2_show_kpis_from_daily(tab1_daily: pd.DataFrame) -> None:
+    enquiry_attempted = int(tab1_daily["Enquiry Attempted_Total"].sum()) if tab1_daily is not None and not tab1_daily.empty and "Enquiry Attempted_Total" in tab1_daily else 0
+    initiate_checkout = int(tab1_daily["Initiate Checkout"].sum()) if tab1_daily is not None and not tab1_daily.empty and "Initiate Checkout" in tab1_daily else 0
+    payment_success = int(tab1_daily["Payment Success"].sum()) if tab1_daily is not None and not tab1_daily.empty and "Payment Success" in tab1_daily else 0
+    gross_gwp = float(tab1_daily["Gross GWP $"].sum()) if tab1_daily is not None and not tab1_daily.empty and "Gross GWP $" in tab1_daily else 0.0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Enquiry Attempted", f"{enquiry_attempted:,}")
+    c2.metric("Initiate Checkout", f"{initiate_checkout:,}")
+    c3.metric("Payment Success", f"{payment_success:,}")
+    c4.metric("Gross GWP", f"${gross_gwp:,.2f}")
+
+
 def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     events = _v2_clean_events_frame(clean_audit)
+    traffic_events = _v2_clean_page_view_frame(clean_audit)
 
     journey_options = ["Manual", "Invoice Upload"]
     combined_journey = journey_options
@@ -2126,7 +2222,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         with c1:
             selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
         with c2:
-            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=[], key_prefix=f"v2_{key_suffix}")
 
         filtered_local = events.copy()
         if selected_journey:
@@ -2135,52 +2231,58 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
             filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
         return filtered_local
 
-    def apply_category_filters(key_suffix: str) -> pd.DataFrame:
+    def apply_category_filters(key_suffix: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
         with c2:
-            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=[], key_prefix=f"v2_{key_suffix}")
         with c3:
             selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix=f"v2_{key_suffix}")
 
-        filtered_local = events.copy()
-        if selected_journey:
-            filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
-        if selected_status:
-            filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
-        if selected_categories and "All" not in selected_categories:
-            filtered_local = filtered_local[filtered_local["Product Category"].isin(selected_categories)]
-        return filtered_local
+        def _apply(df: pd.DataFrame) -> pd.DataFrame:
+            filtered_local = df.copy()
+            if selected_journey and "Journey Type" in filtered_local.columns:
+                filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
+            if selected_status and "Invoice Status" in filtered_local.columns:
+                filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
+            if selected_categories and "All" not in selected_categories and "Product Category" in filtered_local.columns:
+                filtered_local = filtered_local[filtered_local["Product Category"].isin(selected_categories)]
+            return filtered_local
 
-    def apply_paid_campaign_filters(key_suffix: str) -> pd.DataFrame:
+        return _apply(events), _apply(traffic_events)
+
+    def apply_paid_campaign_filters(key_suffix: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
         with c1:
             selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
         with c2:
-            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=[], key_prefix=f"v2_{key_suffix}")
         with c3:
             selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix=f"v2_{key_suffix}")
         with c4:
             selected_paid_sources = _v2_dropdown_filter("Paid Campaign Source", combined_paid_sources, default=combined_paid_sources, key_prefix=f"v2_{key_suffix}")
 
-        filtered_local = events.copy()
-        if selected_journey:
-            filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
-        if selected_status:
-            filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
-        if selected_categories and "All" not in selected_categories:
-            filtered_local = filtered_local[filtered_local["Product Category"].isin(selected_categories)]
-        if selected_paid_sources:
-            filtered_local = filtered_local[filtered_local["Paid Campaign Source"].isin(selected_paid_sources)]
-        return filtered_local
+        def _apply(df: pd.DataFrame) -> pd.DataFrame:
+            filtered_local = df.copy()
+            if selected_journey and "Journey Type" in filtered_local.columns:
+                filtered_local = filtered_local[filtered_local["Journey Type"].isin(selected_journey)]
+            if selected_status and "Invoice Status" in filtered_local.columns:
+                filtered_local = filtered_local[filtered_local["Invoice Status"].isin(selected_status)]
+            if selected_categories and "All" not in selected_categories and "Product Category" in filtered_local.columns:
+                filtered_local = filtered_local[filtered_local["Product Category"].isin(selected_categories)]
+            if selected_paid_sources and "Paid Campaign Source" in filtered_local.columns:
+                filtered_local = filtered_local[filtered_local["Paid Campaign Source"].isin(selected_paid_sources)]
+            return filtered_local
+
+        return _apply(events), _apply(traffic_events)
 
     def apply_traffic_source_filters(key_suffix: str) -> pd.DataFrame:
         c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
         with c1:
             selected_journey = _v2_dropdown_filter("Journey Type", combined_journey, default=combined_journey, key_prefix=f"v2_{key_suffix}")
         with c2:
-            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=combined_status, key_prefix=f"v2_{key_suffix}")
+            selected_status = _v2_dropdown_filter("Invoice Status", combined_status, default=[], key_prefix=f"v2_{key_suffix}")
         with c3:
             selected_categories = _v2_dropdown_filter("Product Category", combined_categories, default=["All"], key_prefix=f"v2_{key_suffix}")
         with c4:
@@ -2204,6 +2306,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     with tab1_view:
         filtered_tab1 = apply_base_filters("tab1")
         tab1 = _v2_build_daily_tab1(filtered_tab1)
+        _v2_show_kpis_from_daily(tab1)
         st.dataframe(tab1, use_container_width=True, hide_index=True)
         st.download_button(
             "Download V2 Tab 1 CSV",
@@ -2213,7 +2316,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab2_view:
-        filtered_tab2 = apply_category_filters("tab2")
+        filtered_tab2, _traffic_tab2 = apply_category_filters("tab2")
         tab2 = _v2_build_daily_tab2(filtered_tab2)
         st.dataframe(tab2, use_container_width=True, hide_index=True)
         st.download_button(
@@ -2224,8 +2327,8 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab3_view:
-        filtered_tab3 = apply_category_filters("tab3")
-        tab3 = _v2_build_source_tab3(filtered_tab3)
+        filtered_tab3, traffic_tab3 = apply_category_filters("tab3")
+        tab3 = _v2_build_source_tab3(filtered_tab3, traffic_tab3)
         st.dataframe(tab3, use_container_width=True, hide_index=True)
         st.download_button(
             "Download V2 Tab 3 CSV",
@@ -2235,8 +2338,8 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab4_view:
-        filtered_tab4 = apply_paid_campaign_filters("tab4")
-        campaign_table, adset_table, ad_table = _v2_build_paid_campaign_tab4(filtered_tab4)
+        filtered_tab4, traffic_tab4 = apply_paid_campaign_filters("tab4")
+        campaign_table, adset_table, ad_table = _v2_build_paid_campaign_tab4(filtered_tab4, traffic_tab4)
 
         st.markdown("###### 1. Campaign")
         st.dataframe(campaign_table, use_container_width=True, hide_index=True)
@@ -2266,7 +2369,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab5_view:
-        filtered_tab5 = apply_category_filters("tab5")
+        filtered_tab5, _traffic_tab5 = apply_category_filters("tab5")
         tab5 = _v2_build_category_tab5(filtered_tab5)
         st.dataframe(tab5, use_container_width=True, hide_index=True)
         st.download_button(
@@ -2288,7 +2391,7 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
         )
 
     with tab7_view:
-        filtered_tab7 = apply_paid_campaign_filters("tab7")
+        filtered_tab7, _traffic_tab7 = apply_paid_campaign_filters("tab7")
         tab7 = _v2_build_order_event_tab7(filtered_tab7)
         st.dataframe(tab7, use_container_width=True, hide_index=True)
         st.download_button(
@@ -2471,8 +2574,6 @@ def main() -> None:
     audit = result["audit"]
     clean_audit = result["clean_audit"]
 
-    show_kpis(daily)
-
     attribution_campaign = result["attribution_campaign"]
     attribution_adset = result["attribution_adset"]
     attribution_ad = result["attribution_ad"]
@@ -2490,6 +2591,7 @@ def main() -> None:
         render_v2_dashboard(clean_audit)
         return
 
+    show_kpis(daily)
     st.info("You are viewing V1: Current Dashboard. Use the sidebar to switch back to V2.")
 
     tab_daily, tab_totals, tab_attribution, tab_product, tab_sales, tab_high_intent, tab_retailer, tab_audit, tab_downloads = st.tabs(
