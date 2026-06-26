@@ -1236,80 +1236,33 @@ def _v2_url_param_from_obj(obj: dict, key: str) -> str:
     return _v2_url_query_value(page_url, key)
 
 
+
+def _v2_normalize_attribution_text(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    text = text.replace("+", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def _v2_campaign_values(obj: dict) -> dict:
-    # Paid Campaign Metrics should use source.attribution first.
-    # Do not use traffic object fields here.
-    campaign = _v2_attr_value(
-        obj,
-        "source.attribution.utm_campaign",
-        "source.attribution.campaign",
-        "source.utm.campaign",
-        "source.utm_campaign",
-        "event_data.utm.campaign",
-        "event_data.utm_campaign",
-        "utm.campaign",
-        "utm_campaign",
-        "data.utm.campaign",
-        "data.utm_campaign",
-        "raw.utm_campaign",
-    ) or _v2_url_param_from_obj(obj, "utm_campaign") or "Unknown"
+    campaign = _v2_normalize_attribution_text(
+        _v2_nested_get(obj, "source.attribution.utm_campaign")
+        or _v2_nested_get(obj, "source.attribution.campaign")
+    ) or "Unknown"
 
-    adset = _v2_attr_value(
-        obj,
-        "source.attribution.utm_term",
-        "source.attribution.term",
-        "source.utm.term",
-        "source.utm_term",
-        "event_data.utm.term",
-        "event_data.utm_term",
-        "event_data.utm.adset",
-        "event_data.utm.ad_set",
-        "event_data.utm_adset",
-        "event_data.utm_ad_set",
-        "event_data.adset_name",
-        "event_data.ad_set_name",
-        "utm.term",
-        "utm_term",
-        "utm.adset",
-        "utm.ad_set",
-        "utm_adset",
-        "utm_ad_set",
-        "adset_name",
-        "ad_set_name",
-        "data.utm.term",
-        "data.utm_term",
-        "data.utm.adset",
-        "data.utm.ad_set",
-        "data.adset_name",
-        "data.ad_set_name",
-        "raw.utm_term",
-        "raw.utm_adset",
-        "raw.utm_ad_set",
-    ) or _v2_url_param_from_obj(obj, "utm_term") or _v2_url_param_from_obj(obj, "utm_adset") or _v2_url_param_from_obj(obj, "utm_ad_set") or "Unknown"
+    adset = _v2_normalize_attribution_text(
+        _v2_nested_get(obj, "source.attribution.utm_term")
+        or _v2_nested_get(obj, "source.attribution.term")
+    ) or "Unknown"
 
-    ad = _v2_attr_value(
-        obj,
-        "source.attribution.utm_content",
-        "source.attribution.content",
-        "source.utm.content",
-        "source.utm_content",
-        "event_data.utm.content",
-        "event_data.utm_content",
-        "event_data.utm.ad",
-        "event_data.utm_ad",
-        "event_data.ad_name",
-        "utm.content",
-        "utm_content",
-        "utm.ad",
-        "utm_ad",
-        "ad_name",
-        "data.utm.content",
-        "data.utm_content",
-        "data.utm.ad",
-        "data.ad_name",
-        "raw.utm_content",
-        "raw.utm_ad",
-    ) or _v2_url_param_from_obj(obj, "utm_content") or _v2_url_param_from_obj(obj, "utm_ad") or "Unknown"
+    ad = _v2_normalize_attribution_text(
+        _v2_nested_get(obj, "source.attribution.utm_content")
+        or _v2_nested_get(obj, "source.attribution.content")
+    ) or "Unknown"
 
     return {
         "Campaign Name": campaign,
@@ -1399,39 +1352,32 @@ def _v2_line_items_from_obj(obj: dict) -> list:
 
 
 def _v2_paid_source_bucket(obj: dict, source_bucket: str = "") -> str:
-    """Map Paid Campaign Source using source.attribution first. Do not use traffic object fields."""
-    source_bucket = str(source_bucket or "").strip()
-    attribution_landing_page = str(_v2_nested_get(obj, "source.attribution.landing_page") or "")
-    source_text = " ".join(
-        str(x or "").lower()
-        for x in [
-            source_bucket,
-            _v2_nested_get(obj, "source.attribution.utm_source"),
-            _v2_nested_get(obj, "source.attribution.source"),
-            _v2_nested_get(obj, "source.attribution.utm_medium"),
-            _v2_nested_get(obj, "source.attribution.medium"),
-            _v2_nested_get(obj, "source.utm.source"),
-            _v2_nested_get(obj, "source.utm.medium"),
-            _v2_nested_get(obj, "source.utm_source"),
-            _v2_nested_get(obj, "source.utm_medium"),
-            _v2_nested_get(obj, "event_data.utm_source"),
-            _v2_nested_get(obj, "event_data.utm_medium"),
-            _v2_nested_get(obj, "utm_source"),
-            _v2_nested_get(obj, "utm_medium"),
-        ]
-    )
+    attr_source = str(
+        _v2_nested_get(obj, "source.attribution.utm_source")
+        or _v2_nested_get(obj, "source.attribution.source")
+        or ""
+    ).strip().lower()
 
-    has_fbclid = bool(_v2_nested_get(obj, "source.attribution.fbclid") or _v2_url_query_value(attribution_landing_page, "fbclid"))
-    has_gclid = bool(_v2_nested_get(obj, "source.attribution.gclid") or _v2_url_query_value(attribution_landing_page, "gclid"))
-    has_ttclid = bool(_v2_nested_get(obj, "source.attribution.ttclid") or _v2_url_query_value(attribution_landing_page, "ttclid"))
+    attr_medium = str(
+        _v2_nested_get(obj, "source.attribution.utm_medium")
+        or _v2_nested_get(obj, "source.attribution.medium")
+        or ""
+    ).strip().lower()
 
-    if source_bucket in ("Meta", "Google", "Tiktok"):
-        return source_bucket
-    if any(token in source_text for token in ["facebook", "instagram", "meta", "fb", "ig"]) or has_fbclid:
+    attr_referrer = str(_v2_nested_get(obj, "source.attribution.referrer") or "").strip().lower()
+    ref_domain = _v2_url_domain(attr_referrer)
+
+    has_fbclid = bool(_v2_nested_get(obj, "source.attribution.fbclid"))
+    has_gclid = bool(_v2_nested_get(obj, "source.attribution.gclid"))
+    has_ttclid = bool(_v2_nested_get(obj, "source.attribution.ttclid"))
+
+    source_text = f"{attr_source} {attr_medium} {ref_domain}".lower()
+
+    if attr_source in ("fb", "facebook", "meta", "instagram", "ig") or ref_domain.endswith("facebook.com") or ref_domain.endswith("instagram.com") or has_fbclid:
         return "Meta"
-    if "google" in source_text or has_gclid:
+    if attr_source == "google" or "google" in source_text or has_gclid:
         return "Google"
-    if "tiktok" in source_text or "tik tok" in source_text or has_ttclid:
+    if attr_source in ("tiktok", "tik tok") or "tiktok" in source_text or has_ttclid:
         return "Tiktok"
     if any(token in source_text for token in ["influencer", "creator", "affiliate", "collab", "collaboration"]):
         return "Influencers"

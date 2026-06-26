@@ -1,37 +1,25 @@
-# V2 Paid Campaign Metrics attribution-object update
+# V2 Paid Campaign Metrics source.attribution only
 
-Built on top of V2 missing helpers hotfix.
+Built on top of V2 Paid Campaign Metrics attribution-object update.
 
 Change:
-- Paid Campaign Metrics now explicitly uses `source.attribution` first.
-- No `traffic.*` fields are used for campaign/adset/ad extraction or paid source bucketing.
+- Paid Campaign Metrics uses ONLY source.attribution.
+- No traffic object.
+- No source.utm fallback.
+- No URL parsing fallback.
+- No older UTM fallback fields.
 
 Paid Campaign Metrics mapping:
-- Campaign Name:
-  - source.attribution.utm_campaign
-  - source.attribution.campaign
-  - source.utm.campaign / source.utm_campaign
-  - URL utm_campaign from non-traffic page URL fallbacks
-  - older non-traffic fallback UTM fields
-- Adset Name:
-  - source.attribution.utm_term
-  - source.attribution.term
-  - source.utm.term / source.utm_term
-  - URL utm_term / utm_adset from non-traffic page URL fallbacks
-  - older non-traffic fallback adset fields
-- Ad Name:
-  - source.attribution.utm_content
-  - source.attribution.content
-  - source.utm.content / source.utm_content
-  - URL utm_content / utm_ad from non-traffic page URL fallbacks
-  - older non-traffic fallback ad fields
-- Paid Campaign Source:
-  - source.attribution source/medium/click IDs first
-  - source.utm fallback
-  - older non-traffic fallback UTM fields
+- Campaign Name = source.attribution.utm_campaign, fallback source.attribution.campaign, else Unknown
+- Adset Name = source.attribution.utm_term, fallback source.attribution.term, else Unknown
+- Ad Name = source.attribution.utm_content, fallback source.attribution.content, else Unknown
+- Paid Campaign Source = source.attribution source/medium/referrer/click IDs only
+
+Also:
+- Normalizes campaign/adset/ad display text by replacing + with spaces and collapsing repeated spaces.
+- Avoids false Meta classification from loose ig substring matching.
 
 Preserved:
-- V2 source/campaign/UTM attribution ignores the traffic object.
 - All missing V2 helpers are defined.
 - Soumya Ramtri / ramtrisoumya11@gmail.com exclusion.
 - Product Sub Category removed from V2 Detail View.
