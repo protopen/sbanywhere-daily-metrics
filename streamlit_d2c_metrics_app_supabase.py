@@ -1237,9 +1237,12 @@ def _v2_url_param_from_obj(obj: dict, key: str) -> str:
 
 
 def _v2_campaign_values(obj: dict) -> dict:
+    # Paid Campaign Metrics should use source.attribution first.
+    # Do not use traffic object fields here.
     campaign = _v2_attr_value(
         obj,
         "source.attribution.utm_campaign",
+        "source.attribution.campaign",
         "source.utm.campaign",
         "source.utm_campaign",
         "event_data.utm.campaign",
@@ -1254,6 +1257,7 @@ def _v2_campaign_values(obj: dict) -> dict:
     adset = _v2_attr_value(
         obj,
         "source.attribution.utm_term",
+        "source.attribution.term",
         "source.utm.term",
         "source.utm_term",
         "event_data.utm.term",
@@ -1286,6 +1290,7 @@ def _v2_campaign_values(obj: dict) -> dict:
     ad = _v2_attr_value(
         obj,
         "source.attribution.utm_content",
+        "source.attribution.content",
         "source.utm.content",
         "source.utm_content",
         "event_data.utm.content",
@@ -1394,8 +1399,9 @@ def _v2_line_items_from_obj(obj: dict) -> list:
 
 
 def _v2_paid_source_bucket(obj: dict, source_bucket: str = "") -> str:
-    """Map the broader source bucket into Paid Campaign Source buckets."""
+    """Map Paid Campaign Source using source.attribution first. Do not use traffic object fields."""
     source_bucket = str(source_bucket or "").strip()
+    attribution_landing_page = str(_v2_nested_get(obj, "source.attribution.landing_page") or "")
     source_text = " ".join(
         str(x or "").lower()
         for x in [
@@ -1415,17 +1421,23 @@ def _v2_paid_source_bucket(obj: dict, source_bucket: str = "") -> str:
         ]
     )
 
+    has_fbclid = bool(_v2_nested_get(obj, "source.attribution.fbclid") or _v2_url_query_value(attribution_landing_page, "fbclid"))
+    has_gclid = bool(_v2_nested_get(obj, "source.attribution.gclid") or _v2_url_query_value(attribution_landing_page, "gclid"))
+    has_ttclid = bool(_v2_nested_get(obj, "source.attribution.ttclid") or _v2_url_query_value(attribution_landing_page, "ttclid"))
+
     if source_bucket in ("Meta", "Google", "Tiktok"):
         return source_bucket
-    if any(token in source_text for token in ["facebook", "instagram", "meta", "fb", "ig"]):
+    if any(token in source_text for token in ["facebook", "instagram", "meta", "fb", "ig"]) or has_fbclid:
         return "Meta"
-    if "google" in source_text:
+    if "google" in source_text or has_gclid:
         return "Google"
-    if "tiktok" in source_text or "tik tok" in source_text:
+    if "tiktok" in source_text or "tik tok" in source_text or has_ttclid:
         return "Tiktok"
     if any(token in source_text for token in ["influencer", "creator", "affiliate", "collab", "collaboration"]):
         return "Influencers"
     return "Others"
+
+
 
 
 def _v2_full_product_values(obj: dict, gwp: float = 0.0) -> dict:

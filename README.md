@@ -1,20 +1,38 @@
-# V2 missing helpers hotfix
+# V2 Paid Campaign Metrics attribution-object update
 
-Built on top of V2 detail value hotfix.
+Built on top of V2 missing helpers hotfix.
 
-Hotfix:
-- Added all missing V2 helpers referenced at runtime:
-  - `_v2_line_items_from_obj`
-  - `_v2_paid_source_bucket`
-  - `_v2_full_product_values`
-- Confirmed all referenced `_v2_*` helper functions are now defined.
-- Fixes runtime errors such as:
-  - NameError: name '_v2_full_product_values' is not defined
-  - NameError: name '_v2_paid_source_bucket' is not defined
-  - NameError: name '_v2_line_items_from_obj' is not defined
+Change:
+- Paid Campaign Metrics now explicitly uses `source.attribution` first.
+- No `traffic.*` fields are used for campaign/adset/ad extraction or paid source bucketing.
+
+Paid Campaign Metrics mapping:
+- Campaign Name:
+  - source.attribution.utm_campaign
+  - source.attribution.campaign
+  - source.utm.campaign / source.utm_campaign
+  - URL utm_campaign from non-traffic page URL fallbacks
+  - older non-traffic fallback UTM fields
+- Adset Name:
+  - source.attribution.utm_term
+  - source.attribution.term
+  - source.utm.term / source.utm_term
+  - URL utm_term / utm_adset from non-traffic page URL fallbacks
+  - older non-traffic fallback adset fields
+- Ad Name:
+  - source.attribution.utm_content
+  - source.attribution.content
+  - source.utm.content / source.utm_content
+  - URL utm_content / utm_ad from non-traffic page URL fallbacks
+  - older non-traffic fallback ad fields
+- Paid Campaign Source:
+  - source.attribution source/medium/click IDs first
+  - source.utm fallback
+  - older non-traffic fallback UTM fields
 
 Preserved:
-- V2 source/campaign/UTM attribution ignores the `traffic` object.
+- V2 source/campaign/UTM attribution ignores the traffic object.
+- All missing V2 helpers are defined.
 - Soumya Ramtri / ramtrisoumya11@gmail.com exclusion.
 - Product Sub Category removed from V2 Detail View.
 - All V2 event-count metrics use unique session/identity counts.
