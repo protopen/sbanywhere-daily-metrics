@@ -1367,6 +1367,16 @@ def _v2_email_from_obj(obj: dict) -> str:
     ).lower()
 
 
+
+def _v2_detail_value(obj: dict, *paths: str):
+    """Return the first non-empty value from nested JSON paths."""
+    for path in paths:
+        val = _v2_nested_get(obj, path)
+        if val is not None and val != "":
+            return val
+    return ""
+
+
 def _v2_product_detail_values(obj: dict) -> dict:
     line_items = _v2_collect_line_items(obj)
     first_item = line_items[0] if line_items else {}

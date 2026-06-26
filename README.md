@@ -1,22 +1,14 @@
-# V2 ignore traffic object hotfix
+# V2 detail value hotfix
 
-Built on top of V2 ignore traffic object update.
+Built on top of V2 ignore traffic object hotfix.
 
 Hotfix:
-- Removed Python 3.10-only pipe type hints that can break Streamlit Cloud if the app runs on an older Python version.
-- Removed remaining `traffic.*` URL parameter fallback from campaign/adset/ad extraction.
-- Source/campaign/UTM attribution now ignores `traffic` object paths completely.
-
-Attribution now uses:
-- source.attribution.*
-- source.utm.*
-- source.page_url / source.url
-- root page_url / url
-- context.page.url
-- event_data.page_url
-- older non-traffic fallback UTM fields
+- Added missing `_v2_detail_value` helper.
+- Fixes runtime error:
+  - NameError: name '_v2_detail_value' is not defined
 
 Preserved:
+- V2 source/campaign/UTM attribution ignores the `traffic` object.
 - Soumya Ramtri / ramtrisoumya11@gmail.com exclusion.
 - Product Sub Category removed from V2 Detail View.
 - All V2 event-count metrics use unique session/identity counts.
