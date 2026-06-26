@@ -47,7 +47,8 @@ from d2c_clean_external_metrics_report import (
 
 APP_TITLE = "Surebright Anywhere Traffic & Campaign Insights"
 DEFAULT_START_DATE = date(2026, 5, 21)
-DEFAULT_V2_START_DATE = date(2026, 6, 18)
+DEFAULT_V2_START_DATE = date(2026, 6, 26)
+V1_EXCLUSIVE_END_DATE = date(2026, 6, 26)
 DEFAULT_TIMEZONE = "Asia/Kolkata"
 DEFAULT_SUPABASE_TABLE = "d2c_raw_events"
 DEFAULT_SUPABASE_JSON_COLUMN = "raw"
@@ -748,6 +749,7 @@ def show_kpis(daily: pd.DataFrame) -> None:
 # -----------------------------
 
 V2_EVENT_SEQUENCE = [
+    "page_view",
     "enquiry_attempted",
     "enquiry_success",
     "sign_up",
@@ -1088,6 +1090,13 @@ def _v2_source_bucket(obj: dict) -> str:
     utm_source = str(
         _v2_nested_get(
             obj,
+            "traffic.marketing.utm_source",
+            "traffic.attribution.last_touch.utm_source",
+            "traffic.attribution.last_touch.source",
+            "traffic.attribution.first_touch.utm_source",
+            "traffic.attribution.first_touch.source",
+            "traffic.attribution.last_non_direct_touch.utm_source",
+            "traffic.attribution.last_non_direct_touch.source",
             "event_data.utm.source",
             "event_data.utm_source",
             "utm.source",
@@ -1102,6 +1111,13 @@ def _v2_source_bucket(obj: dict) -> str:
     utm_medium = str(
         _v2_nested_get(
             obj,
+            "traffic.marketing.utm_medium",
+            "traffic.attribution.last_touch.utm_medium",
+            "traffic.attribution.last_touch.medium",
+            "traffic.attribution.first_touch.utm_medium",
+            "traffic.attribution.first_touch.medium",
+            "traffic.attribution.last_non_direct_touch.utm_medium",
+            "traffic.attribution.last_non_direct_touch.medium",
             "event_data.utm.medium",
             "event_data.utm_medium",
             "utm.medium",
@@ -1116,6 +1132,10 @@ def _v2_source_bucket(obj: dict) -> str:
     page_url = str(
         _v2_nested_get(
             obj,
+            "traffic.page.url",
+            "traffic.attribution.last_touch.landing_page",
+            "traffic.attribution.first_touch.landing_page",
+            "traffic.attribution.last_non_direct_touch.landing_page",
             "source.page_url",
             "source.url",
             "page_url",
@@ -1129,6 +1149,10 @@ def _v2_source_bucket(obj: dict) -> str:
     referrer = str(
         _v2_nested_get(
             obj,
+            "traffic.page.referrer",
+            "traffic.attribution.last_touch.referrer",
+            "traffic.attribution.first_touch.referrer",
+            "traffic.attribution.last_non_direct_touch.referrer",
             "source.referrer",
             "source.referrer_url",
             "referrer",
@@ -1183,6 +1207,10 @@ def _v2_url_param_from_obj(obj: dict, key: str) -> str:
     page_url = str(
         _v2_nested_get(
             obj,
+            "traffic.page.url",
+            "traffic.attribution.last_touch.landing_page",
+            "traffic.attribution.first_touch.landing_page",
+            "traffic.attribution.last_non_direct_touch.landing_page",
             "source.page_url",
             "source.url",
             "page_url",
@@ -1198,6 +1226,10 @@ def _v2_url_param_from_obj(obj: dict, key: str) -> str:
 def _v2_campaign_values(obj: dict) -> dict:
     campaign = _v2_attr_value(
         obj,
+        "traffic.marketing.utm_campaign",
+        "traffic.attribution.last_touch.utm_campaign",
+        "traffic.attribution.first_touch.utm_campaign",
+        "traffic.attribution.last_non_direct_touch.utm_campaign",
         "event_data.utm.campaign",
         "event_data.utm_campaign",
         "utm.campaign",
@@ -1209,6 +1241,10 @@ def _v2_campaign_values(obj: dict) -> dict:
 
     adset = _v2_attr_value(
         obj,
+        "traffic.marketing.utm_term",
+        "traffic.attribution.last_touch.utm_term",
+        "traffic.attribution.first_touch.utm_term",
+        "traffic.attribution.last_non_direct_touch.utm_term",
         "event_data.utm.adset",
         "event_data.utm.ad_set",
         "event_data.utm_adset",
@@ -1231,6 +1267,10 @@ def _v2_campaign_values(obj: dict) -> dict:
 
     ad = _v2_attr_value(
         obj,
+        "traffic.marketing.utm_content",
+        "traffic.attribution.last_touch.utm_content",
+        "traffic.attribution.first_touch.utm_content",
+        "traffic.attribution.last_non_direct_touch.utm_content",
         "event_data.utm.ad",
         "event_data.utm_ad",
         "event_data.ad_name",
@@ -1428,6 +1468,10 @@ def _v2_utm_values(obj: dict) -> dict:
 
     campaign = _v2_attr_value(
         obj,
+        "traffic.marketing.utm_campaign",
+        "traffic.attribution.last_touch.utm_campaign",
+        "traffic.attribution.first_touch.utm_campaign",
+        "traffic.attribution.last_non_direct_touch.utm_campaign",
         "event_data.utm.campaign",
         "event_data.utm_campaign",
         "utm.campaign",
@@ -1584,6 +1628,13 @@ def _v2_paid_source_bucket(obj: dict, source_bucket: str) -> str:
     utm_source = str(
         _v2_nested_get(
             obj,
+            "traffic.marketing.utm_source",
+            "traffic.attribution.last_touch.utm_source",
+            "traffic.attribution.last_touch.source",
+            "traffic.attribution.first_touch.utm_source",
+            "traffic.attribution.first_touch.source",
+            "traffic.attribution.last_non_direct_touch.utm_source",
+            "traffic.attribution.last_non_direct_touch.source",
             "event_data.utm.source",
             "event_data.utm_source",
             "utm.source",
@@ -1598,6 +1649,13 @@ def _v2_paid_source_bucket(obj: dict, source_bucket: str) -> str:
     utm_medium = str(
         _v2_nested_get(
             obj,
+            "traffic.marketing.utm_medium",
+            "traffic.attribution.last_touch.utm_medium",
+            "traffic.attribution.last_touch.medium",
+            "traffic.attribution.first_touch.utm_medium",
+            "traffic.attribution.first_touch.medium",
+            "traffic.attribution.last_non_direct_touch.utm_medium",
+            "traffic.attribution.last_non_direct_touch.medium",
             "event_data.utm.medium",
             "event_data.utm_medium",
             "utm.medium",
@@ -1609,7 +1667,8 @@ def _v2_paid_source_bucket(obj: dict, source_bucket: str) -> str:
         or ""
     ).strip().lower()
 
-    combined = f"{utm_source} {utm_medium}".lower()
+    traffic_channel = str(_v2_nested_get(obj, "traffic.channel", "traffic.attribution.last_touch.channel", "traffic.attribution.first_touch.channel", "traffic.attribution.last_non_direct_touch.channel") or "").strip().lower()
+    combined = f"{utm_source} {utm_medium} {traffic_channel}".lower()
     if any(token in combined for token in ["influencer", "creator", "affiliate", "collab"]):
         return "Influencers"
 
@@ -1960,6 +2019,20 @@ def _v2_dropdown_filter(label: str, options: list[str], default: list[str] | Non
     )
 
 
+
+def _apply_v1_date_cutoff(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    if "date" in out.columns:
+        event_dates = pd.to_datetime(out["date"], errors="coerce").dt.date
+    elif "created_at" in out.columns:
+        event_dates = pd.to_datetime(out["created_at"], errors="coerce").dt.date
+    else:
+        return out
+    return out[event_dates < V1_EXCLUSIVE_END_DATE].copy()
+
+
 def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     events = _v2_clean_events_frame(clean_audit)
 
@@ -2258,6 +2331,8 @@ def main() -> None:
         start_date_value = st.date_input("Start date", value=default_start)
         use_end_date = st.checkbox("Use end date", value=False)
         end_date_value = st.date_input("End date", value=date.today()) if use_end_date else None
+        if not dashboard_version.startswith("V2"):
+            st.caption("V1 is capped at 25 Jun 2026. Data from 26 Jun 2026 onward is shown in V2.")
 
         st.divider()
         st.caption("Clean External filter")
@@ -2270,6 +2345,11 @@ def main() -> None:
 
     start_date_str = date_to_str(start_date_value)
     end_date_str = date_to_str(end_date_value)
+
+    if not dashboard_version.startswith("V2"):
+        v1_last_visible_date = V1_EXCLUSIVE_END_DATE - timedelta(days=1)
+        if end_date_value is None or end_date_value >= V1_EXCLUSIVE_END_DATE:
+            end_date_str = date_to_str(v1_last_visible_date)
 
     try:
         with st.spinner("Fetching source events from Supabase..."):
