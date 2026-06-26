@@ -1112,18 +1112,15 @@ def _v2_url_query_value(value: str, key: str) -> str:
 
 
 def _v2_source_bucket(obj: dict) -> str:
-    # Last-click source bucketing. Prefer traffic.attribution.last_touch,
-    # then fall back to current marketing/page fields, then older payload paths.
+    # V2 attribution/source bucketing without using the traffic object.
+    # Prefer source.attribution, source.utm, URL/referrer, then older fallback fields.
     utm_source = str(
         _v2_nested_get(
             obj,
-            "traffic.attribution.last_touch.utm_source",
-            "traffic.attribution.last_touch.source",
-            "traffic.marketing.utm_source",
-            "traffic.attribution.last_non_direct_touch.utm_source",
-            "traffic.attribution.last_non_direct_touch.source",
-            "traffic.attribution.first_touch.utm_source",
-            "traffic.attribution.first_touch.source",
+            "source.attribution.utm_source",
+            "source.attribution.source",
+            "source.utm.source",
+            "source.utm_source",
             "event_data.utm.source",
             "event_data.utm_source",
             "utm.source",
@@ -1138,13 +1135,10 @@ def _v2_source_bucket(obj: dict) -> str:
     utm_medium = str(
         _v2_nested_get(
             obj,
-            "traffic.attribution.last_touch.utm_medium",
-            "traffic.attribution.last_touch.medium",
-            "traffic.marketing.utm_medium",
-            "traffic.attribution.last_non_direct_touch.utm_medium",
-            "traffic.attribution.last_non_direct_touch.medium",
-            "traffic.attribution.first_touch.utm_medium",
-            "traffic.attribution.first_touch.medium",
+            "source.attribution.utm_medium",
+            "source.attribution.medium",
+            "source.utm.medium",
+            "source.utm_medium",
             "event_data.utm.medium",
             "event_data.utm_medium",
             "utm.medium",
@@ -1156,24 +1150,10 @@ def _v2_source_bucket(obj: dict) -> str:
         or ""
     ).strip().lower()
 
-    traffic_channel = str(
-        _v2_nested_get(
-            obj,
-            "traffic.attribution.last_touch.channel",
-            "traffic.channel",
-            "traffic.attribution.last_non_direct_touch.channel",
-            "traffic.attribution.first_touch.channel",
-        )
-        or ""
-    ).strip().lower()
-
     page_url = str(
         _v2_nested_get(
             obj,
-            "traffic.attribution.last_touch.landing_page",
-            "traffic.page.url",
-            "traffic.attribution.last_non_direct_touch.landing_page",
-            "traffic.attribution.first_touch.landing_page",
+            "source.attribution.landing_page",
             "source.page_url",
             "source.url",
             "page_url",
@@ -1187,10 +1167,7 @@ def _v2_source_bucket(obj: dict) -> str:
     referrer = str(
         _v2_nested_get(
             obj,
-            "traffic.attribution.last_touch.referrer",
-            "traffic.page.referrer",
-            "traffic.attribution.last_non_direct_touch.referrer",
-            "traffic.attribution.first_touch.referrer",
+            "source.attribution.referrer",
             "source.referrer",
             "source.referrer_url",
             "referrer",
@@ -1203,11 +1180,11 @@ def _v2_source_bucket(obj: dict) -> str:
     )
 
     ref_domain = _v2_url_domain(referrer)
-    page_has_gclid = bool(_v2_url_query_value(page_url, "gclid") or _v2_nested_get(obj, "traffic.attribution.last_touch.gclid", "traffic.marketing.gclid"))
-    page_has_fbclid = bool(_v2_url_query_value(page_url, "fbclid") or _v2_nested_get(obj, "traffic.attribution.last_touch.fbclid", "traffic.marketing.fbclid"))
-    page_has_ttclid = bool(_v2_url_query_value(page_url, "ttclid") or _v2_nested_get(obj, "traffic.attribution.last_touch.ttclid", "traffic.marketing.ttclid"))
+    page_has_gclid = bool(_v2_url_query_value(page_url, "gclid") or _v2_nested_get(obj, "source.attribution.gclid", "source.gclid", "gclid"))
+    page_has_fbclid = bool(_v2_url_query_value(page_url, "fbclid") or _v2_nested_get(obj, "source.attribution.fbclid", "source.fbclid", "fbclid"))
+    page_has_ttclid = bool(_v2_url_query_value(page_url, "ttclid") or _v2_nested_get(obj, "source.attribution.ttclid", "source.ttclid", "ttclid"))
 
-    source_text = f"{utm_source} {utm_medium} {traffic_channel} {ref_domain}".lower()
+    source_text = f"{utm_source} {utm_medium} {ref_domain}".lower()
 
     if any(token in source_text for token in ["facebook", "instagram", "meta", "fb", "ig"]) or page_has_fbclid:
         return "Meta"
@@ -1265,10 +1242,9 @@ def _v2_url_param_from_obj(obj: dict, key: str) -> str:
 def _v2_campaign_values(obj: dict) -> dict:
     campaign = _v2_attr_value(
         obj,
-        "traffic.attribution.last_touch.utm_campaign",
-        "traffic.marketing.utm_campaign",
-        "traffic.attribution.last_non_direct_touch.utm_campaign",
-        "traffic.attribution.first_touch.utm_campaign",
+        "source.attribution.utm_campaign",
+        "source.utm.campaign",
+        "source.utm_campaign",
         "event_data.utm.campaign",
         "event_data.utm_campaign",
         "utm.campaign",
@@ -1280,46 +1256,58 @@ def _v2_campaign_values(obj: dict) -> dict:
 
     adset = _v2_attr_value(
         obj,
-        "traffic.attribution.last_touch.utm_term",
-        "traffic.marketing.utm_term",
-        "traffic.attribution.last_non_direct_touch.utm_term",
-        "traffic.attribution.first_touch.utm_term",
+        "source.attribution.utm_term",
+        "source.utm.term",
+        "source.utm_term",
+        "event_data.utm.term",
+        "event_data.utm_term",
         "event_data.utm.adset",
         "event_data.utm.ad_set",
         "event_data.utm_adset",
         "event_data.utm_ad_set",
         "event_data.adset_name",
         "event_data.ad_set_name",
+        "utm.term",
+        "utm_term",
         "utm.adset",
         "utm.ad_set",
         "utm_adset",
         "utm_ad_set",
         "adset_name",
         "ad_set_name",
+        "data.utm.term",
+        "data.utm_term",
         "data.utm.adset",
         "data.utm.ad_set",
         "data.adset_name",
         "data.ad_set_name",
+        "raw.utm_term",
         "raw.utm_adset",
         "raw.utm_ad_set",
-    ) or _v2_url_param_from_obj(obj, "utm_adset") or _v2_url_param_from_obj(obj, "utm_ad_set") or "Unknown"
+    ) or _v2_url_param_from_obj(obj, "utm_term") or _v2_url_param_from_obj(obj, "utm_adset") or _v2_url_param_from_obj(obj, "utm_ad_set") or "Unknown"
 
     ad = _v2_attr_value(
         obj,
-        "traffic.attribution.last_touch.utm_content",
-        "traffic.marketing.utm_content",
-        "traffic.attribution.last_non_direct_touch.utm_content",
-        "traffic.attribution.first_touch.utm_content",
+        "source.attribution.utm_content",
+        "source.utm.content",
+        "source.utm_content",
+        "event_data.utm.content",
+        "event_data.utm_content",
         "event_data.utm.ad",
         "event_data.utm_ad",
         "event_data.ad_name",
+        "utm.content",
+        "utm_content",
         "utm.ad",
         "utm_ad",
         "ad_name",
+        "data.utm.content",
+        "data.utm_content",
         "data.utm.ad",
         "data.ad_name",
+        "raw.utm_content",
         "raw.utm_ad",
-    ) or _v2_url_param_from_obj(obj, "utm_ad") or "Unknown"
+    ) or _v2_url_param_from_obj(obj, "utm_content") or _v2_url_param_from_obj(obj, "utm_ad") or "Unknown"
 
     return {
         "Campaign Name": campaign,
@@ -1328,13 +1316,6 @@ def _v2_campaign_values(obj: dict) -> dict:
     }
 
 
-
-def _v2_detail_value(obj: dict, *paths: str) -> str:
-    for path in paths:
-        value = _v2_nested_get(obj, path)
-        if value not in (None, ""):
-            return str(value).strip()
-    return ""
 
 
 def _v2_name_from_obj(obj: dict) -> str:
@@ -1485,6 +1466,10 @@ def _v2_order_payment_id(obj: dict) -> str:
 def _v2_utm_values(obj: dict) -> dict:
     source = _v2_attr_value(
         obj,
+        "source.attribution.utm_source",
+        "source.attribution.source",
+        "source.utm.source",
+        "source.utm_source",
         "event_data.utm.source",
         "event_data.utm_source",
         "utm.source",
@@ -1496,6 +1481,10 @@ def _v2_utm_values(obj: dict) -> dict:
 
     medium = _v2_attr_value(
         obj,
+        "source.attribution.utm_medium",
+        "source.attribution.medium",
+        "source.utm.medium",
+        "source.utm_medium",
         "event_data.utm.medium",
         "event_data.utm_medium",
         "utm.medium",
@@ -1507,10 +1496,9 @@ def _v2_utm_values(obj: dict) -> dict:
 
     campaign = _v2_attr_value(
         obj,
-        "traffic.attribution.last_touch.utm_campaign",
-        "traffic.marketing.utm_campaign",
-        "traffic.attribution.last_non_direct_touch.utm_campaign",
-        "traffic.attribution.first_touch.utm_campaign",
+        "source.attribution.utm_campaign",
+        "source.utm.campaign",
+        "source.utm_campaign",
         "event_data.utm.campaign",
         "event_data.utm_campaign",
         "utm.campaign",
@@ -1523,195 +1511,6 @@ def _v2_utm_values(obj: dict) -> dict:
     return {"UTM Source": source, "UTM Medium": medium, "UTM Campaign": campaign}
 
 
-def _v2_full_product_values(obj: dict, gwp=0) -> dict:
-    line_items = _v2_collect_line_items(obj)
-    item = line_items[0] if line_items else {}
-    product = item.get("product") if isinstance(item.get("product"), dict) else {}
-    purchase = item.get("purchase") if isinstance(item.get("purchase"), dict) else {}
-    protection = item.get("protection") if isinstance(item.get("protection"), dict) else {}
-    category_obj = product.get("category") if isinstance(product.get("category"), dict) else {}
-
-    product_category = (
-        category_obj.get("name")
-        or product.get("category")
-        or item.get("item_category")
-        or item.get("category")
-        or _v2_product_category_from_obj(obj)
-    )
-
-    product_title = (
-        product.get("title")
-        or product.get("name")
-        or product.get("description")
-        or item.get("item_name")
-        or item.get("name")
-        or _v2_detail_value(obj, "event_data.product.title", "event_data.product.name", "data.product.title", "data.product.name")
-    )
-
-    product_brand = (
-        product.get("brand")
-        or _v2_detail_value(obj, "event_data.product.brand", "data.product.brand", "raw.product_brand")
-    )
-
-    manufacturer = (
-        _v2_detail_value(obj, "manufacturer.name", "event_data.manufacturer.name", "data.manufacturer.name")
-        or product_brand
-    )
-
-    model_number = (
-        _v2_detail_value(obj, "manufacturer.model_number", "event_data.manufacturer.model_number", "data.manufacturer.model_number")
-        or str(product.get("sku") or product.get("model_number") or item.get("model_number") or "")
-    )
-
-    product_condition = str(
-        product.get("condition")
-        or item.get("condition")
-        or _v2_detail_value(obj, "event_data.product.condition", "data.product.condition")
-        or ""
-    ).strip()
-
-    quantity = _v2_item_quantity(item) if item else _v2_product_count_from_obj(obj, 1)
-
-    unit_price = _v2_parse_money(
-        purchase.get("unit_price")
-        or item.get("unit_price")
-        or item.get("price")
-        or _v2_detail_value(obj, "event_data.product.unit_price", "event_data.product.price", "data.product.price", "raw.product_price")
-    )
-
-    total_price = _v2_parse_money(purchase.get("total_price") or item.get("total_price"))
-    if not total_price and unit_price:
-        total_price = unit_price * quantity
-
-    warranty_type = str(
-        protection.get("type")
-        or _v2_detail_value(obj, "event_data.warranty.type", "event_data.plan.type", "data.warranty.type", "data.plan.type")
-        or ""
-    ).strip()
-
-    warranty_plan_name = str(
-        protection.get("plan_name")
-        or protection.get("name")
-        or item.get("item_variant")
-        or _v2_detail_value(obj, "event_data.warranty.plan_name", "event_data.plan.name", "data.warranty.plan_name", "data.plan.name")
-        or ""
-    ).strip()
-
-    warranty_price = (
-        _v2_parse_money(protection.get("plan_price") or protection.get("price") or item.get("plan_price") or item.get("warrantyPrice") or item.get("warranty_price"))
-        or _v2_parse_money(_v2_detail_value(obj, "event_data.warranty.price", "event_data.plan.price", "data.warranty.price", "data.plan.price"))
-        or _v2_parse_money(gwp)
-    )
-
-    warranty_term = str(
-        protection.get("term_months")
-        or protection.get("term")
-        or protection.get("tenure")
-        or _v2_detail_value(obj, "event_data.warranty.term_months", "event_data.plan.term_months", "data.warranty.term_months", "data.plan.term_months")
-        or ""
-    ).strip()
-
-    warranty_provider = str(
-        protection.get("provider")
-        or protection.get("underwriter")
-        or protection.get("administrator")
-        or _v2_detail_value(obj, "event_data.warranty.provider", "event_data.plan.provider", "data.warranty.provider", "data.plan.provider")
-        or ""
-    ).strip()
-
-    manufacturer_warranty = _v2_detail_value(
-        obj,
-        "manufacturer.warranty",
-        "event_data.manufacturer.warranty",
-        "data.manufacturer.warranty",
-        "event_data.product.manufacturer_warranty",
-        "data.product.manufacturer_warranty",
-    )
-
-    eligible_value = (
-        item.get("eligible")
-        if isinstance(item, dict) and "eligible" in item
-        else _v2_nested_get(obj, "event_data.eligible", "data.eligible", "eligible")
-    )
-    if isinstance(eligible_value, bool):
-        eligible = eligible_value
-    elif eligible_value in (None, ""):
-        eligible = ""
-    else:
-        eligible = str(eligible_value).strip()
-
-    return {
-        "Product Category": str(product_category or "Unknown"),
-        "Product Title": str(product_title or ""),
-        "Product Brand": str(product_brand or ""),
-        "Manufacturer": str(manufacturer or ""),
-        "Model Number": str(model_number or ""),
-        "Product Condition": product_condition,
-        "Quantity": quantity,
-        "Product Unit Price": round(float(unit_price or 0), 2),
-        "Product Total Price": round(float(total_price or 0), 2),
-        "Warranty Type": warranty_type,
-        "Warranty / Plan Name": warranty_plan_name,
-        "Warranty Price": round(float(warranty_price or 0), 2),
-        "Warranty Term Months": warranty_term,
-        "Warranty Provider": warranty_provider,
-        "Manufacturer Warranty": manufacturer_warranty,
-        "Eligible": eligible,
-    }
-
-
-def _v2_paid_source_bucket(obj: dict, source_bucket: str) -> str:
-    if source_bucket in {"Meta", "Google", "Tiktok"}:
-        return source_bucket
-
-    utm_source = str(
-        _v2_nested_get(
-            obj,
-            "traffic.marketing.utm_source",
-            "traffic.attribution.last_touch.utm_source",
-            "traffic.attribution.last_touch.source",
-            "traffic.attribution.first_touch.utm_source",
-            "traffic.attribution.first_touch.source",
-            "traffic.attribution.last_non_direct_touch.utm_source",
-            "traffic.attribution.last_non_direct_touch.source",
-            "event_data.utm.source",
-            "event_data.utm_source",
-            "utm.source",
-            "utm_source",
-            "data.utm.source",
-            "data.utm_source",
-            "raw.utm_source",
-        )
-        or ""
-    ).strip().lower()
-
-    utm_medium = str(
-        _v2_nested_get(
-            obj,
-            "traffic.marketing.utm_medium",
-            "traffic.attribution.last_touch.utm_medium",
-            "traffic.attribution.last_touch.medium",
-            "traffic.attribution.first_touch.utm_medium",
-            "traffic.attribution.first_touch.medium",
-            "traffic.attribution.last_non_direct_touch.utm_medium",
-            "traffic.attribution.last_non_direct_touch.medium",
-            "event_data.utm.medium",
-            "event_data.utm_medium",
-            "utm.medium",
-            "utm_medium",
-            "data.utm.medium",
-            "data.utm_medium",
-            "raw.utm_medium",
-        )
-        or ""
-    ).strip().lower()
-
-    traffic_channel = str(_v2_nested_get(obj, "traffic.channel", "traffic.attribution.last_touch.channel", "traffic.attribution.first_touch.channel", "traffic.attribution.last_non_direct_touch.channel") or "").strip().lower()
-    combined = f"{utm_source} {utm_medium} {traffic_channel}".lower()
-    if any(token in combined for token in ["influencer", "creator", "affiliate", "collab"]):
-        return "Influencers"
-
-    return "Others"
 
 
 def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:

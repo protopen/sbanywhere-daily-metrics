@@ -1,18 +1,27 @@
-# V2 Soumya exclusion update
+# V2 ignore traffic object update
 
-Built on top of V2 Detail View subcategory removal.
+Built on top of V2 Soumya exclusion update.
 
 Change:
-- Added exclusion for name:
-  - Soumya Ramtri
-- Added exclusion for email:
-  - ramtrisoumya11@gmail.com
+- V2 source/campaign/UTM attribution now ignores the `traffic` object.
+- Source Metrics, Paid Campaign Metrics, Detail View UTM fields, and Order Event Detail UTM fields now use:
+  - `source.attribution.*`
+  - `source.utm.*`
+  - page URL query params
+  - older non-traffic fallback fields
+- The `traffic.*` paths are no longer used for source bucketing or campaign/adset/ad extraction.
+
+Current mapping:
+- Source bucket uses `source.attribution`, `source.utm`, URL params, and referrer.
+- Campaign Name uses `source.attribution.utm_campaign`, then `source.utm.campaign`, then older UTM fields / URL params.
+- Adset Name uses `source.attribution.utm_term`, then `source.utm.term`, then older term/adset fields / URL params.
+- Ad Name uses `source.attribution.utm_content`, then `source.utm.content`, then older content/ad fields / URL params.
 
 Preserved:
+- Soumya Ramtri / ramtrisoumya11@gmail.com exclusion.
 - Product Sub Category removed from V2 Detail View.
 - All V2 event-count metrics use unique session/identity counts.
-- Traffic (Total) comes only from unique page_view identities.
-- Source Metrics uses last-click attribution.
+- Traffic (Total) still comes only from unique page_view identities.
 - Sign Up_ Total counts event_name = sign_up_total.
 - Enquiry Success remains removed from Product Category Metrics.
 - Invoice Status filter is unselected by default.
