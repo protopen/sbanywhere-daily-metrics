@@ -1,27 +1,26 @@
-# V2 ignore traffic object update
+# V2 ignore traffic object hotfix
 
-Built on top of V2 Soumya exclusion update.
+Built on top of V2 ignore traffic object update.
 
-Change:
-- V2 source/campaign/UTM attribution now ignores the `traffic` object.
-- Source Metrics, Paid Campaign Metrics, Detail View UTM fields, and Order Event Detail UTM fields now use:
-  - `source.attribution.*`
-  - `source.utm.*`
-  - page URL query params
-  - older non-traffic fallback fields
-- The `traffic.*` paths are no longer used for source bucketing or campaign/adset/ad extraction.
+Hotfix:
+- Removed Python 3.10-only pipe type hints that can break Streamlit Cloud if the app runs on an older Python version.
+- Removed remaining `traffic.*` URL parameter fallback from campaign/adset/ad extraction.
+- Source/campaign/UTM attribution now ignores `traffic` object paths completely.
 
-Current mapping:
-- Source bucket uses `source.attribution`, `source.utm`, URL params, and referrer.
-- Campaign Name uses `source.attribution.utm_campaign`, then `source.utm.campaign`, then older UTM fields / URL params.
-- Adset Name uses `source.attribution.utm_term`, then `source.utm.term`, then older term/adset fields / URL params.
-- Ad Name uses `source.attribution.utm_content`, then `source.utm.content`, then older content/ad fields / URL params.
+Attribution now uses:
+- source.attribution.*
+- source.utm.*
+- source.page_url / source.url
+- root page_url / url
+- context.page.url
+- event_data.page_url
+- older non-traffic fallback UTM fields
 
 Preserved:
 - Soumya Ramtri / ramtrisoumya11@gmail.com exclusion.
 - Product Sub Category removed from V2 Detail View.
 - All V2 event-count metrics use unique session/identity counts.
-- Traffic (Total) still comes only from unique page_view identities.
+- Traffic (Total) still counts only unique page_view identities.
 - Sign Up_ Total counts event_name = sign_up_total.
 - Enquiry Success remains removed from Product Category Metrics.
 - Invoice Status filter is unselected by default.

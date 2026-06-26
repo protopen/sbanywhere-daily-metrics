@@ -1223,10 +1223,7 @@ def _v2_url_param_from_obj(obj: dict, key: str) -> str:
     page_url = str(
         _v2_nested_get(
             obj,
-            "traffic.page.url",
-            "traffic.attribution.last_touch.landing_page",
-            "traffic.attribution.first_touch.landing_page",
-            "traffic.attribution.last_non_direct_touch.landing_page",
+            "source.attribution.landing_page",
             "source.page_url",
             "source.url",
             "page_url",
@@ -1727,7 +1724,7 @@ def _v2_build_daily_tab2(events: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def _v2_build_source_tab3(events: pd.DataFrame, traffic_events: pd.DataFrame | None = None) -> pd.DataFrame:
+def _v2_build_source_tab3(events: pd.DataFrame, traffic_events=None) -> pd.DataFrame:
     rows = []
     df = events.copy() if events is not None and not events.empty else pd.DataFrame()
     traffic_df = traffic_events.copy() if traffic_events is not None and not traffic_events.empty else pd.DataFrame()
@@ -1755,7 +1752,7 @@ def _v2_build_source_tab3(events: pd.DataFrame, traffic_events: pd.DataFrame | N
 
 
 
-def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list[str], output_cols: list[str], traffic_events: pd.DataFrame | None = None) -> pd.DataFrame:
+def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list, output_cols: list, traffic_events=None) -> pd.DataFrame:
     events_df = events.copy() if events is not None and not events.empty else pd.DataFrame(columns=group_cols + ["event_name", "identity", "gwp"])
     traffic_df = traffic_events.copy() if traffic_events is not None and not traffic_events.empty else pd.DataFrame(columns=group_cols + ["identity"])
 
@@ -1805,7 +1802,7 @@ def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list[str], ou
     return out.reindex(columns=output_cols)
 
 
-def _v2_build_paid_campaign_tab4(events: pd.DataFrame, traffic_events: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _v2_build_paid_campaign_tab4(events: pd.DataFrame, traffic_events=None):
     campaign = _v2_aggregate_campaign_table(events, ["Campaign Name"], V2_TAB4_CAMPAIGN_COLUMNS, traffic_events)
     adset = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name"], V2_TAB4_ADSET_COLUMNS, traffic_events)
     ad = _v2_aggregate_campaign_table(events, ["Campaign Name", "Adset Name", "Ad Name"], V2_TAB4_AD_COLUMNS, traffic_events)
@@ -1919,7 +1916,7 @@ def _v2_build_order_event_tab7(events: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def _v2_dropdown_filter(label: str, options: list[str], default: list[str] | None = None, key_prefix: str = "") -> list[str]:
+def _v2_dropdown_filter(label: str, options: list, default=None, key_prefix: str = "") -> list:
     clean_options = [str(x) for x in options if str(x).strip()]
     clean_options = list(dict.fromkeys(clean_options))
     default_values = default if default is not None else clean_options
