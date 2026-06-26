@@ -1,11 +1,17 @@
-# V2 detail value hotfix
+# V2 missing helpers hotfix
 
-Built on top of V2 ignore traffic object hotfix.
+Built on top of V2 detail value hotfix.
 
 Hotfix:
-- Added missing `_v2_detail_value` helper.
-- Fixes runtime error:
-  - NameError: name '_v2_detail_value' is not defined
+- Added all missing V2 helpers referenced at runtime:
+  - `_v2_line_items_from_obj`
+  - `_v2_paid_source_bucket`
+  - `_v2_full_product_values`
+- Confirmed all referenced `_v2_*` helper functions are now defined.
+- Fixes runtime errors such as:
+  - NameError: name '_v2_full_product_values' is not defined
+  - NameError: name '_v2_paid_source_bucket' is not defined
+  - NameError: name '_v2_line_items_from_obj' is not defined
 
 Preserved:
 - V2 source/campaign/UTM attribution ignores the `traffic` object.

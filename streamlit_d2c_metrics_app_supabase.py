@@ -1377,6 +1377,193 @@ def _v2_detail_value(obj: dict, *paths: str):
     return ""
 
 
+def _v2_line_items_from_obj(obj: dict) -> list:
+    """Return line_items from common payload locations."""
+    candidates = [
+        _v2_nested_get(obj, "event_data.line_items"),
+        _v2_nested_get(obj, "line_items"),
+        _v2_nested_get(obj, "data.line_items"),
+        _v2_nested_get(obj, "raw.line_items"),
+        _v2_nested_get(obj, "event_data.invoice.line_items"),
+        _v2_nested_get(obj, "invoice.line_items"),
+    ]
+    for val in candidates:
+        if isinstance(val, list):
+            return val
+    return []
+
+
+def _v2_paid_source_bucket(obj: dict, source_bucket: str = "") -> str:
+    """Map the broader source bucket into Paid Campaign Source buckets."""
+    source_bucket = str(source_bucket or "").strip()
+    source_text = " ".join(
+        str(x or "").lower()
+        for x in [
+            source_bucket,
+            _v2_nested_get(obj, "source.attribution.utm_source"),
+            _v2_nested_get(obj, "source.attribution.source"),
+            _v2_nested_get(obj, "source.attribution.utm_medium"),
+            _v2_nested_get(obj, "source.attribution.medium"),
+            _v2_nested_get(obj, "source.utm.source"),
+            _v2_nested_get(obj, "source.utm.medium"),
+            _v2_nested_get(obj, "source.utm_source"),
+            _v2_nested_get(obj, "source.utm_medium"),
+            _v2_nested_get(obj, "event_data.utm_source"),
+            _v2_nested_get(obj, "event_data.utm_medium"),
+            _v2_nested_get(obj, "utm_source"),
+            _v2_nested_get(obj, "utm_medium"),
+        ]
+    )
+
+    if source_bucket in ("Meta", "Google", "Tiktok"):
+        return source_bucket
+    if any(token in source_text for token in ["facebook", "instagram", "meta", "fb", "ig"]):
+        return "Meta"
+    if "google" in source_text:
+        return "Google"
+    if "tiktok" in source_text or "tik tok" in source_text:
+        return "Tiktok"
+    if any(token in source_text for token in ["influencer", "creator", "affiliate", "collab", "collaboration"]):
+        return "Influencers"
+    return "Others"
+
+
+def _v2_full_product_values(obj: dict, gwp: float = 0.0) -> dict:
+    """Extract product/order detail fields for V2 Order Event Detail."""
+    line_items = _v2_line_items_from_obj(obj)
+    first_item = line_items[0] if line_items else {}
+
+    def item_get(*paths):
+        for path in paths:
+            val = _v2_nested_get(first_item, path)
+            if val is not None and val != "":
+                return val
+        return ""
+
+    product_title = item_get(
+        "product.title",
+        "title",
+        "product.name",
+        "name",
+        "description",
+        "product.description",
+    ) or _v2_detail_value(
+        obj,
+        "event_data.form.fields.product_category",
+        "event_data.product.title",
+        "data.product.title",
+        "raw.product_title",
+    )
+
+    product_category = item_get(
+        "product.category.name",
+        "product.category",
+        "category.name",
+        "category",
+    ) or _v2_product_category_from_obj(obj)
+
+    quantity = item_get("purchase.quantity", "quantity", "qty") or 1
+
+    unit_price = item_get(
+        "purchase.unit_price",
+        "unit_price",
+        "price",
+        "product.price",
+    ) or _v2_detail_value(
+        obj,
+        "event_data.form.fields.product_price",
+        "event_data.product.price",
+        "data.product.price",
+        "raw.product_price",
+    )
+
+    total_price = item_get("purchase.total_price", "total_price", "line_total") or unit_price
+
+    warranty_price = item_get(
+        "protection.plan_price",
+        "protection.price",
+        "warranty.price",
+        "plan_price",
+    ) or _v2_detail_value(
+        obj,
+        "event_data.quote.selected_plan.price",
+        "event_data.checkout.selected_plans.0.price",
+        "data.plan_price",
+        "raw.plan_price",
+    )
+
+    warranty_name = item_get(
+        "protection.plan_name",
+        "warranty.plan_name",
+        "plan_name",
+    ) or _v2_detail_value(
+        obj,
+        "event_data.quote.selected_plan.name",
+        "event_data.checkout.selected_plans.0.name",
+        "data.plan_name",
+        "raw.plan_name",
+    )
+
+    warranty_term = item_get(
+        "protection.term_months",
+        "warranty.term_months",
+        "term_months",
+    ) or _v2_detail_value(
+        obj,
+        "event_data.quote.selected_plan.term_months",
+        "event_data.checkout.selected_plans.0.term_months",
+        "data.term_months",
+        "raw.term_months",
+    )
+
+    eligible = item_get("protection.eligible", "eligible") or _v2_detail_value(
+        obj,
+        "event_data.quote.eligible",
+        "event_data.product.eligible",
+        "data.eligible",
+        "raw.eligible",
+    )
+
+    return {
+        "Order / Payment ID": _v2_detail_value(
+            obj,
+            "event_data.checkout.payment_id",
+            "event_data.checkout.checkout_id",
+            "event_data.checkout.cart_id",
+            "event_data.payment.payment_id",
+            "checkout.payment_id",
+            "checkout.checkout_id",
+            "payment_id",
+            "order_id",
+            "raw.payment_id",
+            "raw.order_id",
+        ),
+        "Product Category": product_category,
+        "Product Title": product_title,
+        "Product Brand": item_get("product.brand", "brand") or _v2_detail_value(obj, "event_data.product.brand", "data.product.brand", "raw.brand"),
+        "Manufacturer": item_get("product.manufacturer", "manufacturer") or _v2_detail_value(obj, "event_data.product.manufacturer", "data.product.manufacturer", "raw.manufacturer"),
+        "Model Number": item_get("product.model_number", "model_number", "model") or _v2_detail_value(obj, "event_data.product.model_number", "data.product.model_number", "raw.model_number"),
+        "Product Condition": item_get("product.condition", "condition") or _v2_detail_value(obj, "event_data.product.condition", "data.product.condition", "raw.condition"),
+        "Quantity": quantity,
+        "Product Unit Price": unit_price,
+        "Product Total Price": total_price,
+        "Warranty Type": _v2_detail_value(
+            obj,
+            "event_data.quote.coverage_type",
+            "event_data.quote.selected_plan.coverage_type",
+            "data.coverage_type",
+            "raw.coverage_type",
+        ),
+        "Warranty / Plan Name": warranty_name,
+        "Warranty Price": warranty_price,
+        "Warranty Term Months": warranty_term,
+        "Warranty Provider": item_get("protection.provider", "warranty.provider", "provider") or _v2_detail_value(obj, "event_data.quote.provider", "data.provider", "raw.provider"),
+        "Manufacturer Warranty": item_get("protection.manufacturer_warranty", "manufacturer_warranty") or _v2_detail_value(obj, "event_data.product.manufacturer_warranty", "data.manufacturer_warranty", "raw.manufacturer_warranty"),
+        "Eligible": eligible,
+        "Gross GWP $": gwp,
+    }
+
+
 def _v2_product_detail_values(obj: dict) -> dict:
     line_items = _v2_collect_line_items(obj)
     first_item = line_items[0] if line_items else {}
