@@ -49,7 +49,9 @@ except Exception:  # pragma: no cover
 # -----------------------------
 
 PROD_DOMAIN_KEYWORDS = ("surebrightanywhere.com",)
-EXCLUDED_IDENTITY_TERMS = ("abhishek", "santosh", "ankita", "soumyaramtri@gmail.com")
+EXCLUDED_IDENTITY_TERMS = ("abhishek", "santosh", "ankita",
+    "soumya ramtri", "soumyaramtri@gmail.com",
+    "ramtrisoumya11@gmail.com")
 EXCLUDED_EMAIL_DOMAINS = ("surebright.com", "surerbright.com", "example.com")
 EXCLUDED_URL_TERMS = ("localhost", "webflow.io", "amplifyapp.com", "_meta_test=1")
 

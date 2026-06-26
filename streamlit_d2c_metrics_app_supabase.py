@@ -756,8 +756,7 @@ V2_TRAFFIC_EVENT_SEQUENCE = [
 
 V2_EVENT_SEQUENCE = [
     "enquiry_attempted",
-    "enquiry_success",
-    "sign_up",
+    "sign_up_total",
     "initiate_checkout",
     "payment_attempted",
     "payment_success",
@@ -777,11 +776,10 @@ V2_DAILY_COLUMNS = [
 V2_TAB2_COLUMNS = [
     "Date",
     "Enquiry Attempted",
-    "Enquiry Success",
     "Sign Up_ Total",
-    "Innitiate Checkout_User Count",
-    "Innitiate Checkout_Product Count",
-    "Innitiate Checkout_Cart Value",
+    "Initiate Checkout_User Count",
+    "Initiate Checkout_Product Count",
+    "Initiate Checkout_Cart Value",
     "Payment Success_ User Count",
     "Payment Failure_ User Count",
     "Payment Success_ Product Count",
@@ -804,7 +802,7 @@ V2_TAB3_COLUMNS = [
     "Traffic (Total)",
     "Enquiry Attempted_Total",
     "Sign Up_ Total",
-    "Innitiate Checkout",
+    "Initiate Checkout",
     "Payment Success",
     "Payment Failure",
     "Gross GWP $",
@@ -823,7 +821,7 @@ V2_TAB4_CAMPAIGN_COLUMNS = [
     "Traffic (Total)",
     "Enquiry Attempted_Total",
     "Sign Up_ Total",
-    "Innitiate Checkout",
+    "Initiate Checkout",
     "Payment Success",
     "Payment Failure",
     "Gross GWP $",
@@ -835,7 +833,7 @@ V2_TAB4_ADSET_COLUMNS = [
     "Traffic (Total)",
     "Enquiry Attempted_Total",
     "Sign Up_ Total",
-    "Innitiate Checkout",
+    "Initiate Checkout",
     "Payment Success",
     "Payment Failure",
     "Gross GWP $",
@@ -848,7 +846,7 @@ V2_TAB4_AD_COLUMNS = [
     "Traffic (Total)",
     "Enquiry Attempted_Total",
     "Sign Up_ Total",
-    "Innitiate Checkout",
+    "Initiate Checkout",
     "Payment Success",
     "Payment Failure",
     "Gross GWP $",
@@ -858,7 +856,7 @@ V2_TAB5_COLUMNS = [
     "Category",
     "Enquiry Attempted_Total",
     "Sign Up_ Total",
-    "Innitiate Checkout",
+    "Initiate Checkout",
     "Payment Success",
     "Payment Failure",
     "Gross GWP $",
@@ -903,7 +901,6 @@ V2_TAB6_COLUMNS = [
     "Name",
     "Email",
     "Last Event",
-    "Product Sub Category",
     "Price",
     "Waranty Type",
     "Warranty Tenure",
@@ -1851,6 +1848,17 @@ def _v2_unique_traffic_count(df: pd.DataFrame) -> int:
     return int(df["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique())
 
 
+
+
+def _v2_unique_event_count(df: pd.DataFrame, event_name: str) -> int:
+    if df is None or df.empty or "event_name" not in df.columns or "identity" not in df.columns:
+        return 0
+    g = df[df["event_name"] == event_name]
+    if g.empty:
+        return 0
+    return int(g["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique())
+
+
 def _v2_build_daily_tab1(events: pd.DataFrame) -> pd.DataFrame:
     if events is None or events.empty:
         return pd.DataFrame(columns=V2_DAILY_COLUMNS)
@@ -1864,11 +1872,11 @@ def _v2_build_daily_tab1(events: pd.DataFrame) -> pd.DataFrame:
         rows.append(
             {
                 "Date": day,
-                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
-                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
-                "Initiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
-                "Payment Success": int((g["event_name"] == "payment_success").sum()),
-                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
+                "Enquiry Attempted_Total": _v2_unique_event_count(g, "enquiry_attempted"),
+                "Sign Up_ Total": _v2_unique_event_count(g, "sign_up_total"),
+                "Initiate Checkout": _v2_unique_event_count(g, "initiate_checkout"),
+                "Payment Success": _v2_unique_event_count(g, "payment_success"),
+                "Payment Failure": _v2_unique_event_count(g, "payment_failure"),
                 "Gross GWP $": round(float(g.loc[g["event_name"] == "payment_success", "gwp"].sum()), 2),
             }
         )
@@ -1899,12 +1907,11 @@ def _v2_build_daily_tab2(events: pd.DataFrame) -> pd.DataFrame:
         rows.append(
             {
                 "Date": day,
-                "Enquiry Attempted": int((g["event_name"] == "enquiry_attempted").sum()),
-                "Enquiry Success": int((g["event_name"] == "enquiry_success").sum()),
-                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
-                "Innitiate Checkout_User Count": int(initiate["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
-                "Innitiate Checkout_Product Count": int(initiate["product_count"].fillna(0).sum()),
-                "Innitiate Checkout_Cart Value": round(float(initiate["cart_value"].fillna(0).sum()), 2),
+                "Enquiry Attempted": _v2_unique_event_count(g, "enquiry_attempted"),
+                "Sign Up_ Total": _v2_unique_event_count(g, "sign_up_total"),
+                "Initiate Checkout_User Count": int(initiate["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
+                "Initiate Checkout_Product Count": int(initiate["product_count"].fillna(0).sum()),
+                "Initiate Checkout_Cart Value": round(float(initiate["cart_value"].fillna(0).sum()), 2),
                 "Payment Success_ User Count": int(payment_success["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
                 "Payment Failure_ User Count": int(payment_failure["identity"].dropna().astype(str).replace("", pd.NA).dropna().nunique()),
                 "Payment Success_ Product Count": int(payment_success["product_count"].fillna(0).sum()),
@@ -1934,11 +1941,11 @@ def _v2_build_source_tab3(events: pd.DataFrame, traffic_events: pd.DataFrame | N
             {
                 "Source": source,
                 "Traffic (Total)": _v2_unique_traffic_count(tg),
-                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()) if not g.empty else 0,
-                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()) if not g.empty else 0,
-                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()) if not g.empty else 0,
-                "Payment Success": int((g["event_name"] == "payment_success").sum()) if not g.empty else 0,
-                "Payment Failure": int((g["event_name"] == "payment_failure").sum()) if not g.empty else 0,
+                "Enquiry Attempted_Total": _v2_unique_event_count(g, "enquiry_attempted"),
+                "Sign Up_ Total": _v2_unique_event_count(g, "sign_up_total"),
+                "Initiate Checkout": _v2_unique_event_count(g, "initiate_checkout"),
+                "Payment Success": _v2_unique_event_count(g, "payment_success"),
+                "Payment Failure": _v2_unique_event_count(g, "payment_failure"),
                 "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2) if not payment_success.empty else 0,
             }
         )
@@ -1982,11 +1989,11 @@ def _v2_aggregate_campaign_table(events: pd.DataFrame, group_cols: list[str], ou
         base.update(
             {
                 "Traffic (Total)": _v2_unique_traffic_count(tg),
-                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()) if not g.empty else 0,
-                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()) if not g.empty else 0,
-                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()) if not g.empty else 0,
-                "Payment Success": int((g["event_name"] == "payment_success").sum()) if not g.empty else 0,
-                "Payment Failure": int((g["event_name"] == "payment_failure").sum()) if not g.empty else 0,
+                "Enquiry Attempted_Total": _v2_unique_event_count(g, "enquiry_attempted"),
+                "Sign Up_ Total": _v2_unique_event_count(g, "sign_up_total"),
+                "Initiate Checkout": _v2_unique_event_count(g, "initiate_checkout"),
+                "Payment Success": _v2_unique_event_count(g, "payment_success"),
+                "Payment Failure": _v2_unique_event_count(g, "payment_failure"),
                 "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2) if not payment_success.empty else 0,
             }
         )
@@ -2018,11 +2025,11 @@ def _v2_build_category_tab5(events: pd.DataFrame) -> pd.DataFrame:
         rows.append(
             {
                 "Category": str(category) if str(category or "").strip() else "Unknown",
-                "Enquiry Attempted_Total": int((g["event_name"] == "enquiry_attempted").sum()),
-                "Sign Up_ Total": int((g["event_name"] == "sign_up").sum()),
-                "Innitiate Checkout": int((g["event_name"] == "initiate_checkout").sum()),
-                "Payment Success": int((g["event_name"] == "payment_success").sum()),
-                "Payment Failure": int((g["event_name"] == "payment_failure").sum()),
+                "Enquiry Attempted_Total": _v2_unique_event_count(g, "enquiry_attempted"),
+                "Sign Up_ Total": _v2_unique_event_count(g, "sign_up_total"),
+                "Initiate Checkout": _v2_unique_event_count(g, "initiate_checkout"),
+                "Payment Success": _v2_unique_event_count(g, "payment_success"),
+                "Payment Failure": _v2_unique_event_count(g, "payment_failure"),
                 "Gross GWP $": round(float(payment_success["gwp"].fillna(0).sum()), 2),
             }
         )
@@ -2070,7 +2077,6 @@ def _v2_build_detail_tab6(events: pd.DataFrame) -> pd.DataFrame:
                 "Name": _v2_first_nonempty(g["Name"]) if "Name" in g.columns else "",
                 "Email": _v2_first_nonempty(g["Email"]) if "Email" in g.columns else "",
                 "Last Event": str(latest.get("event_name", "")).replace("_", " ").title(),
-                "Product Sub Category": _v2_first_nonempty(g["Product Sub Category"]) if "Product Sub Category" in g.columns else "",
                 "Price": _v2_first_nonempty(g["Price"]) if "Price" in g.columns else 0,
                 "Waranty Type": _v2_first_nonempty(g["Waranty Type"]) if "Waranty Type" in g.columns else "",
                 "Warranty Tenure": _v2_first_nonempty(g["Warranty Tenure"]) if "Warranty Tenure" in g.columns else "",

@@ -1,20 +1,22 @@
-# V2 traffic/page_view + last-click update
+# V2 Soumya exclusion update
 
-Built on top of V2 KPI alignment build.
+Built on top of V2 Detail View subcategory removal.
 
-Changes:
-- Invoice Status filter is now unselected by default across V2 tabs.
-  - If no invoice status is selected, the dashboard does not filter by invoice status.
-- Source Metrics now uses last-click attribution for source bucketing.
-  - It prefers `traffic.attribution.last_touch` paths.
-  - It falls back to `traffic.marketing`, then older payload paths.
-- Any table column named `Traffic (Total)` now counts unique traffic identities from `page_view` events only.
-  - Source Metrics traffic uses page_view by source.
-  - Paid Campaign Metrics traffic uses page_view by campaign/adset/ad.
-- `page_view` remains separate from conversion events and is not counted as enquiry_attempted.
+Change:
+- Added exclusion for name:
+  - Soumya Ramtri
+- Added exclusion for email:
+  - ramtrisoumya11@gmail.com
 
 Preserved:
-- KPI alignment in V2 Daily Metrics.
+- Product Sub Category removed from V2 Detail View.
+- All V2 event-count metrics use unique session/identity counts.
+- Traffic (Total) comes only from unique page_view identities.
+- Source Metrics uses last-click attribution.
+- Sign Up_ Total counts event_name = sign_up_total.
+- Enquiry Success remains removed from Product Category Metrics.
+- Invoice Status filter is unselected by default.
+- page_view remains separate from conversion events.
 - V2 starts from 26 Jun 2026.
 - V1 stops before 26 Jun 2026.
 - Journey Type anomaly logs.
