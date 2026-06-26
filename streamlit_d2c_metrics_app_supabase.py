@@ -748,8 +748,13 @@ def show_kpis(daily: pd.DataFrame) -> None:
 # V2 Dashboard
 # -----------------------------
 
-V2_EVENT_SEQUENCE = [
+# page_view is a separate traffic event and comes before enquiry_attempted in the journey.
+# It is intentionally not included in V2 dashboard calculations yet.
+V2_TRAFFIC_EVENT_SEQUENCE = [
     "page_view",
+]
+
+V2_EVENT_SEQUENCE = [
     "enquiry_attempted",
     "enquiry_success",
     "sign_up",
@@ -868,6 +873,29 @@ V2_TRAFFIC_SOURCE_OPTIONS = [
     "Referral (Others)",
     "Organic",
     "Others",
+]
+
+V2_ALLOWED_FLOW_METHODS = {
+    "manual": "Manual",
+    "invoice_upload": "Invoice Upload",
+}
+
+V2_ANOMALY_LOG_COLUMNS = [
+    "Date",
+    "Event",
+    "Anomaly Error Message",
+    "Raw Field",
+    "Raw Value",
+    "Journey Type",
+    "Invoice Status",
+    "Email",
+    "Identity",
+    "Traffic Source",
+    "Paid Campaign Source",
+    "Product Category",
+    "UTM Source",
+    "UTM Medium",
+    "UTM Campaign",
 ]
 
 V2_TAB6_COLUMNS = [
@@ -1696,6 +1724,9 @@ def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
         )
 
         event_name = _v2_norm_value(row.get("event_name", ""))
+        if event_name not in V2_EVENT_SEQUENCE:
+            continue
+
         gwp = float(row.get("gwp", 0) or 0)
         product_count_fallback = row.get("product_count", 0)
         identity = str(row.get("session_id", "") or "").strip() or str(row.get("identity_key", "") or "").strip()
@@ -2033,12 +2064,49 @@ def _apply_v1_date_cutoff(df: pd.DataFrame) -> pd.DataFrame:
     return out[event_dates < V1_EXCLUSIVE_END_DATE].copy()
 
 
+
+
+def _v2_build_anomaly_logs(events: pd.DataFrame) -> pd.DataFrame:
+    if events is None or events.empty:
+        return pd.DataFrame(columns=V2_ANOMALY_LOG_COLUMNS)
+
+    rows = []
+    allowed_methods = set(V2_ALLOWED_FLOW_METHODS.keys())
+
+    for _, row in events.iterrows():
+        raw_method = str(row.get("flow_method", "") or "").strip().lower()
+        if raw_method and raw_method not in allowed_methods:
+            rows.append(
+                {
+                    "Date": row.get("Date", ""),
+                    "Event": row.get("event_name", ""),
+                    "Anomaly Error Message": f"Unexpected Journey Type / flow.method value: {raw_method}. Allowed values are manual and invoice_upload.",
+                    "Raw Field": "event_data.flow.method",
+                    "Raw Value": raw_method,
+                    "Journey Type": row.get("Journey Type", ""),
+                    "Invoice Status": row.get("Invoice Status", ""),
+                    "Email": row.get("Email", ""),
+                    "Identity": row.get("identity", ""),
+                    "Traffic Source": row.get("Traffic Source", row.get("Source", "")),
+                    "Paid Campaign Source": row.get("Paid Campaign Source", ""),
+                    "Product Category": row.get("Product Category", ""),
+                    "UTM Source": row.get("UTM Source", ""),
+                    "UTM Medium": row.get("UTM Medium", ""),
+                    "UTM Campaign": row.get("UTM Campaign", ""),
+                }
+            )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return pd.DataFrame(columns=V2_ANOMALY_LOG_COLUMNS)
+    return out[V2_ANOMALY_LOG_COLUMNS].sort_values(["Date", "Event"], ascending=[False, True]).reset_index(drop=True)
+
+
 def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
     events = _v2_clean_events_frame(clean_audit)
 
     journey_options = ["Manual", "Invoice Upload"]
-    present_journey = sorted([x for x in events.get("Journey Type", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
-    combined_journey = list(dict.fromkeys(journey_options + present_journey))
+    combined_journey = journey_options
 
     invoice_options = ["Invoice Upload Success", "Invoice Upload Failure"]
     present_status = sorted([x for x in events.get("Invoice Status", pd.Series(dtype=str)).dropna().unique().tolist() if x and x != "No Status"])
@@ -2129,8 +2197,8 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
             filtered_local = filtered_local[filtered_local["Traffic Source"].isin(selected_traffic_sources)]
         return filtered_local
 
-    tab1_view, tab2_view, tab3_view, tab4_view, tab5_view, tab6_view, tab7_view = st.tabs(
-        ["Daily Metrics", "Product Category Metrics", "Source Metrics", "Paid Campaign Metrics", "Category Metrics", "Detail View", "Order Event Detail"]
+    tab1_view, tab2_view, tab3_view, tab4_view, tab5_view, tab6_view, tab7_view, logs_view = st.tabs(
+        ["Daily Metrics", "Product Category Metrics", "Source Metrics", "Paid Campaign Metrics", "Category Metrics", "Detail View", "Order Event Detail", "Logs"]
     )
 
     with tab1_view:
@@ -2229,6 +2297,21 @@ def render_v2_dashboard(clean_audit: pd.DataFrame) -> None:
             file_name="v2_order_event_detail_tab7.csv",
             mime="text/csv",
         )
+
+    with logs_view:
+        st.caption("Anomaly logs show rows where payload values do not match the dashboard's expected rules. New rules can be added here going forward.")
+        anomaly_logs = _v2_build_anomaly_logs(events)
+        if anomaly_logs.empty:
+            st.success("No anomalies found for the selected V2 date range.")
+        else:
+            st.error(f"{len(anomaly_logs)} anomaly row(s) found.")
+            st.dataframe(anomaly_logs, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download V2 Anomaly Logs CSV",
+                data=dataframe_to_csv_bytes(anomaly_logs),
+                file_name="v2_anomaly_logs.csv",
+                mime="text/csv",
+            )
 
 
 
