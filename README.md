@@ -1,25 +1,21 @@
-# V2 Paid Campaign Metrics source.attribution only
+# V2 Eastern Time dashboard update
 
-Built on top of V2 Paid Campaign Metrics attribution-object update.
+Built on top of V2 Paid Campaign Metrics source.attribution-only build.
 
 Change:
-- Paid Campaign Metrics uses ONLY source.attribution.
-- No traffic object.
-- No source.utm fallback.
-- No URL parsing fallback.
-- No older UTM fallback fields.
+- Default dashboard timezone changed to America/New_York.
+- V2 date grouping now uses Eastern Time dates.
+- V2 detail/order/log views include a `Date/Time (ET)` column.
+- Raw UTC timestamps are converted to America/New_York for display.
+- Date filters continue to fetch a buffered UTC window from Supabase, then the app applies the selected dashboard timezone date filter.
 
-Paid Campaign Metrics mapping:
-- Campaign Name = source.attribution.utm_campaign, fallback source.attribution.campaign, else Unknown
-- Adset Name = source.attribution.utm_term, fallback source.attribution.term, else Unknown
-- Ad Name = source.attribution.utm_content, fallback source.attribution.content, else Unknown
-- Paid Campaign Source = source.attribution source/medium/referrer/click IDs only
-
-Also:
-- Normalizes campaign/adset/ad display text by replacing + with spaces and collapsing repeated spaces.
-- Avoids false Meta classification from loose ig substring matching.
+Notes:
+- America/New_York handles EST/EDT automatically. June events display as EDT because daylight savings is active.
+- Paid Campaign Metrics still uses only source.attribution.
 
 Preserved:
+- Paid Campaign Metrics uses only source.attribution.
+- No traffic/source.utm/URL/old UTM fallback in Paid Campaign Metrics.
 - All missing V2 helpers are defined.
 - Soumya Ramtri / ramtrisoumya11@gmail.com exclusion.
 - Product Sub Category removed from V2 Detail View.

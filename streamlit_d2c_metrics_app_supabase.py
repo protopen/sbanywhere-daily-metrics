@@ -49,7 +49,8 @@ APP_TITLE = "Surebright Anywhere Traffic & Campaign Insights"
 DEFAULT_START_DATE = date(2026, 5, 21)
 DEFAULT_V2_START_DATE = date(2026, 6, 26)
 V1_EXCLUSIVE_END_DATE = date(2026, 6, 26)
-DEFAULT_TIMEZONE = "Asia/Kolkata"
+DEFAULT_TIMEZONE = "America/New_York"
+DISPLAY_TIMEZONE_LABEL = "ET"
 DEFAULT_SUPABASE_TABLE = "d2c_raw_events"
 DEFAULT_SUPABASE_JSON_COLUMN = "raw"
 DEFAULT_SUPABASE_TIMESTAMP_COLUMN = "occurred_at"
@@ -420,7 +421,7 @@ def process_uploaded_file(
                 ["clean_external_events_in_window", len(clean_events)],
                 ["gross_gwp_total", round(float(daily["Gross GWP $"].sum()), 2) if not daily.empty else 0.0],
                 ["clean_external_definition", "prod surebrightanywhere.com only, excluding internal/test identities, test domains, and test URLs"],
-                ["generated_at_local", datetime.now().isoformat(timespec="seconds")],
+                ["generated_at_local", datetime.now(ZoneInfo(DEFAULT_TIMEZONE) if ZoneInfo else None).isoformat(timespec="seconds")],
             ],
             columns=["Field", "Value"],
         )
@@ -880,6 +881,7 @@ V2_ALLOWED_FLOW_METHODS = {
 
 V2_ANOMALY_LOG_COLUMNS = [
     "Date",
+    "Date/Time (ET)",
     "Event",
     "Anomaly Error Message",
     "Raw Field",
@@ -898,6 +900,7 @@ V2_ANOMALY_LOG_COLUMNS = [
 
 V2_TAB6_COLUMNS = [
     "Date",
+    "Date/Time (ET)",
     "Name",
     "Email",
     "Last Event",
@@ -912,6 +915,7 @@ V2_TAB6_COLUMNS = [
 
 V2_TAB7_COLUMNS = [
     "Date",
+    "Date/Time (ET)",
     "Name",
     "Email",
     "Journey Flow",
@@ -962,6 +966,39 @@ def _v2_nested_get(obj: dict, *paths: str):
         if ok:
             return cur
     return None
+
+
+
+def _v2_event_time_values(row, obj: dict) -> dict:
+    """Return Eastern Time date/time display values for V2 dashboards."""
+    raw_ts = (
+        _v2_nested_get(obj, "occurred_at")
+        or _v2_nested_get(obj, "received_at")
+        or row.get("occurred_at")
+        or row.get("received_at")
+        or row.get("created_at")
+        or row.get("date")
+        or ""
+    )
+
+    if not raw_ts:
+        return {"Date": str(row.get("date", "") or ""), "Date/Time (ET)": ""}
+
+    try:
+        dt = pd.to_datetime(raw_ts, utc=True, errors="coerce")
+        if pd.isna(dt):
+            return {"Date": str(row.get("date", "") or ""), "Date/Time (ET)": str(raw_ts)}
+        py_dt = dt.to_pydatetime()
+        if ZoneInfo:
+            local_dt = py_dt.astimezone(ZoneInfo(DEFAULT_TIMEZONE))
+        else:
+            local_dt = py_dt
+        return {
+            "Date": local_dt.strftime("%Y-%m-%d"),
+            "Date/Time (ET)": local_dt.strftime("%Y-%m-%d %I:%M:%S %p %Z"),
+        }
+    except Exception:
+        return {"Date": str(row.get("date", "") or ""), "Date/Time (ET)": str(raw_ts)}
 
 
 def _v2_norm_value(value) -> str:
@@ -1698,10 +1735,12 @@ def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
         product_detail_values = _v2_product_detail_values(obj)
         full_product_values = _v2_full_product_values(obj, gwp)
         utm_values = _v2_utm_values(obj)
+        time_values = _v2_event_time_values(row, obj)
 
         rows.append(
             {
-                "Date": str(row.get("date", "") or ""),
+                "Date": time_values["Date"],
+                "Date/Time (ET)": time_values["Date/Time (ET)"],
                 "event_name": event_name,
                 "flow_method": _v2_norm_value(flow_method),
                 "flow_status": _v2_norm_value(flow_status),
@@ -1756,7 +1795,7 @@ def _v2_clean_events_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
 
 def _v2_clean_page_view_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
     if clean_audit is None or clean_audit.empty:
-        return pd.DataFrame(columns=["Date", "event_name", "Source", "Traffic Source", "Paid Campaign Source", "Campaign Name", "Adset Name", "Ad Name", "identity", "Journey Type", "Invoice Status", "Product Category"])
+        return pd.DataFrame(columns=["Date", "Date/Time (ET)", "event_name", "Source", "Traffic Source", "Paid Campaign Source", "Campaign Name", "Adset Name", "Ad Name", "identity", "Journey Type", "Invoice Status", "Product Category"])
 
     rows = []
     for _, row in clean_audit.iterrows():
@@ -1770,10 +1809,12 @@ def _v2_clean_page_view_frame(clean_audit: pd.DataFrame) -> pd.DataFrame:
         identity = str(row.get("session_id", "") or "").strip() or str(row.get("identity_key", "") or "").strip()
         source_bucket = _v2_source_bucket(obj)
         campaign_values = _v2_campaign_values(obj)
+        time_values = _v2_event_time_values(row, obj)
 
         rows.append(
             {
-                "Date": str(row.get("date", "") or ""),
+                "Date": time_values["Date"],
+                "Date/Time (ET)": time_values["Date/Time (ET)"],
                 "event_name": event_name,
                 "flow_method": _v2_norm_value(flow_method),
                 "flow_status": _v2_norm_value(flow_status),
@@ -2025,6 +2066,7 @@ def _v2_build_detail_tab6(events: pd.DataFrame) -> pd.DataFrame:
         rows.append(
             {
                 "Date": latest.get("Date", ""),
+                "Date/Time (ET)": latest.get("Date/Time (ET)", ""),
                 "Name": _v2_first_nonempty(g["Name"]) if "Name" in g.columns else "",
                 "Email": _v2_first_nonempty(g["Email"]) if "Email" in g.columns else "",
                 "Last Event": str(latest.get("event_name", "")).replace("_", " ").title(),
@@ -2041,7 +2083,8 @@ def _v2_build_detail_tab6(events: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(rows)
     if out.empty:
         return pd.DataFrame(columns=V2_TAB6_COLUMNS)
-    out = out.sort_values(["Date", "Last Event"], ascending=[False, True]).reset_index(drop=True)
+    sort_col = "Date/Time (ET)" if "Date/Time (ET)" in out.columns else "Date"
+    out = out.sort_values([sort_col, "Last Event"], ascending=[False, True]).reset_index(drop=True)
     return out[V2_TAB6_COLUMNS]
 
 
@@ -2065,7 +2108,8 @@ def _v2_build_order_event_tab7(events: pd.DataFrame) -> pd.DataFrame:
             out[col] = ""
 
     out = out[V2_TAB7_COLUMNS].copy()
-    out = out.sort_values(["Date", "Email", "Event"], ascending=[False, True, True]).reset_index(drop=True)
+    sort_col = "Date/Time (ET)" if "Date/Time (ET)" in out.columns else "Date"
+    out = out.sort_values([sort_col, "Email", "Event"], ascending=[False, True, True]).reset_index(drop=True)
     return out
 
 
@@ -2116,6 +2160,7 @@ def _v2_build_anomaly_logs(events: pd.DataFrame) -> pd.DataFrame:
             rows.append(
                 {
                     "Date": row.get("Date", ""),
+                    "Date/Time (ET)": row.get("Date/Time (ET)", ""),
                     "Event": row.get("event_name", ""),
                     "Anomaly Error Message": f"Unexpected Journey Type / flow.method value: {raw_method}. Allowed values are manual and invoice_upload.",
                     "Raw Field": "event_data.flow.method",
@@ -2469,7 +2514,7 @@ def main() -> None:
 
         st.divider()
         st.markdown("#### Report settings")
-        timezone_name = st.text_input("Timezone for date bucketing", value=DEFAULT_TIMEZONE)
+        timezone_name = st.text_input("Timezone for date bucketing / dashboard dates", value=DEFAULT_TIMEZONE)
         default_start = DEFAULT_V2_START_DATE if dashboard_version.startswith("V2") else DEFAULT_START_DATE
         start_date_value = st.date_input("Start date", value=default_start)
         use_end_date = st.checkbox("Use end date", value=False)
@@ -2545,6 +2590,7 @@ def main() -> None:
     retailer = result["retailer"]
 
     if dashboard_version.startswith("V2"):
+        st.caption(f"All V2 dates and event timestamps are shown in {timezone_name} / Eastern Time.")
         render_v2_dashboard(clean_audit)
         return
 
